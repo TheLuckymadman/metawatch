@@ -1,0 +1,77 @@
+package repository
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/TheLuckymadman/metawatch/internal/models"
+)
+
+type MemStorage struct {
+	Metrics map[string]*models.Metrics
+	sync.RWMutex
+}
+
+func NewStorage() *MemStorage {
+	return &MemStorage{
+		Metrics: make(map[string]*models.Metrics),
+	}
+}
+
+func (m *MemStorage) SetMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
+	key := agentID + "_" + metricName
+
+	m.Lock()
+	metric, ok := m.Metrics[key]
+	if !ok {
+		m.Metrics[key] = &models.Metrics{
+			ID: metricName,
+			MType: metricType,
+		}
+		metric = m.Metrics[key]
+	}
+	m.Unlock()
+	defer metric.Unlock()
+
+	metric.Lock()
+	switch metricType {
+	case models.Counter: {
+		if metric.Delta == nil {
+			metric.Delta = new(int64)
+		}
+		*metric.Delta += delta
+		metric.Value = nil
+	}
+	
+	case models.Gauge: {
+		metric.Delta = nil
+		metric.Value = &value
+	}
+	}
+	
+	return nil
+}
+
+func (m *MemStorage) GetMetric(agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
+	key := agentID + "_" + metricName
+
+	m.RLock()
+	agentMetrics, ok := m.Metrics[key]
+	m.RUnlock()
+
+	if !ok {
+		return 0, 0, fmt.Errorf("metric not found, key: %q", key)
+	}
+
+	agentMetrics.RLock()
+	defer agentMetrics.RUnlock()
+
+	if agentMetrics.MType == models.Gauge && agentMetrics.Value != nil {
+		return *agentMetrics.Value, 0, nil
+	}
+	if agentMetrics.MType == models.Counter && agentMetrics.Delta != nil {
+		return 0, *agentMetrics.Delta, nil
+	}
+
+	return 0, 0, fmt.Errorf("metric %q has no value", key)
+}
