@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/TheLuckymadman/metawatch/internal/models"
+	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
 type MemStorage struct {
-	Metrics map[string]*models.Metrics
+	Metrics map[string]*model.Metrics
 	sync.RWMutex
 }
 
 func NewStorage() *MemStorage {
 	return &MemStorage{
-		Metrics: make(map[string]*models.Metrics),
+		Metrics: make(map[string]*model.Metrics),
 	}
 }
 
@@ -24,26 +24,26 @@ func (m *MemStorage) SetMetric(agentID string, metricType string, metricName str
 	m.Lock()
 	metric, ok := m.Metrics[key]
 	if !ok {
-		m.Metrics[key] = &models.Metrics{
+		m.Metrics[key] = &model.Metrics{
 			ID: metricName,
 			MType: metricType,
 		}
 		metric = m.Metrics[key]
 	}
 	m.Unlock()
-	defer metric.Unlock()
+	// defer metric.Unlock()
 
-	metric.Lock()
+	// metric.Lock()
 	switch metricType {
-	case models.Counter: {
+	case model.Counter: {
 		if metric.Delta == nil {
 			metric.Delta = new(int64)
 		}
-		*metric.Delta += delta
+		*metric.Delta += delta - *metric.Delta
 		metric.Value = nil
 	}
 	
-	case models.Gauge: {
+	case model.Gauge: {
 		metric.Delta = nil
 		metric.Value = &value
 	}
@@ -63,13 +63,13 @@ func (m *MemStorage) GetMetric(agentID string, metricType string, metricName str
 		return 0, 0, fmt.Errorf("metric not found, key: %q", key)
 	}
 
-	agentMetrics.RLock()
-	defer agentMetrics.RUnlock()
+	// agentMetrics.RLock()
+	// defer agentMetrics.RUnlock()
 
-	if agentMetrics.MType == models.Gauge && agentMetrics.Value != nil {
+	if agentMetrics.MType == model.Gauge && agentMetrics.Value != nil {
 		return *agentMetrics.Value, 0, nil
 	}
-	if agentMetrics.MType == models.Counter && agentMetrics.Delta != nil {
+	if agentMetrics.MType == model.Counter && agentMetrics.Delta != nil {
 		return 0, *agentMetrics.Delta, nil
 	}
 
