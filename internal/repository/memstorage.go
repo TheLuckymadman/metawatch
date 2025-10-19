@@ -39,7 +39,7 @@ func (m *MemStorage) SetMetric(agentID string, metricType string, metricName str
 		if metric.Delta == nil {
 			metric.Delta = new(int64)
 		}
-		*metric.Delta += delta - *metric.Delta
+		*metric.Delta += delta
 		metric.Value = nil
 	}
 	
