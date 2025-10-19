@@ -1,0 +1,9 @@
+package utils
+
+func FloatPtr(v float64) *float64 {
+	return &v
+}
+
+func Int64Ptr(v int64) *int64 {
+	return &v
+}

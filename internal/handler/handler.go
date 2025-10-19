@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"io"
@@ -69,6 +70,13 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 		default:
 			http.Error(w, "ivalid metric type\n", http.StatusBadRequest)
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		var reply = struct {
+			Status string `json:"status"`
+		}{Status: "ok"}
+		body, _ := json.Marshal(reply)
+		w.Write(body)
 	})
 }
 
@@ -109,7 +117,7 @@ func MetricGetterHandler(s repository.Storage) http.HandlerFunc {
 					http.Error(w, errStr, http.StatusNotFound)
 					return
 				}
-				body = fmt.Sprintf("%.3f", value)
+				body = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
 
 			}
 		default:
