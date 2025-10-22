@@ -61,7 +61,7 @@ func TestServer(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T){
 			r := chi.NewRouter()
-			r.Post(`/update/{type}/*`, handler.MetricReceiverHandler(storage))
+			r.Post("/update/{type}/*", handler.MetricReceiverHandler(storage))
 			r.Get("/value/*", handler.MetricGetterHandler(storage))
 
 			// set metrics

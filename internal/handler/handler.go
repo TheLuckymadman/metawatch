@@ -27,9 +27,10 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 		}
 		// if r.Header.Get("Content-Type") != "text/plain" {
 		// 	http.Error(w, "Unsupported content type", http.StatusMethodNotAllowed)
+		// 	w.WriteHeader(http.StatusMethodNotAllowed)
 		// 	return
 		// }
-
+		
 		metricType := chi.URLParam(r, "type")
 		restPath := chi.URLParam(r, "*")
 		reqPath := regexp.MustCompile(`^(.+)/(.+)$`)
@@ -48,11 +49,13 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 			value, err := strconv.ParseInt(metricValue, 10, 64)
 			if err != nil {
 				http.Error(w, "ivalid metric values\n", http.StatusBadRequest)
+				return
 			}
-			s.SetMetric(agentIP, metricType, metricName, 0, value)
+			err = s.SetMetric(agentIP, metricType, metricName, 0, value)
 			if err != nil {
 				errStr := fmt.Sprintf("Error while metric adding to db:\n%v", err)
 				http.Error(w, errStr, http.StatusBadRequest)
+				return 
 			}
 
 		case model.Gauge:
@@ -60,15 +63,18 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 			value, err := strconv.ParseFloat(metricValue, 64)
 			if err != nil {
 				http.Error(w, "ivalid metric values\n", http.StatusBadRequest)
+				return 
 			}
 			err = s.SetMetric(agentIP, metricType, metricName, value, 0)
 			if err != nil {
 				errStr := fmt.Sprintf("Error while metric adding to db:\n%v", err)
 				http.Error(w, errStr, http.StatusBadRequest)
+				return
 			}
 
 		default:
 			http.Error(w, "ivalid metric type\n", http.StatusBadRequest)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
