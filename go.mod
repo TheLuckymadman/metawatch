@@ -3,6 +3,7 @@ module github.com/TheLuckymadman/metawatch
 go 1.24.9
 
 require (
+	github.com/caarlos0/env v3.5.0+incompatible
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/stretchr/testify v1.11.1
 )

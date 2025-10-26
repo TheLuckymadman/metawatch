@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"net/http"
 	"log"
 	
@@ -10,13 +9,17 @@ import (
 
 	"github.com/TheLuckymadman/metawatch/internal/handler"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
+	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 )
 
 var (
-	a = flag.String("a", "localhost:8080", "local listening interface in the format servername:port")
+	a string
 )
 
 func run() error {
+	cfg := serverconfig.Load()
+	a = (*cfg).ServerURL
+
 	s := repository.NewStorage()
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
@@ -24,13 +27,12 @@ func run() error {
 	r.Get("/value/*", handler.MetricGetterHandler(s))
 	r.Get("/", handler.MetricsGetterHandler(s))
 
-	log.Printf("Start server on %v", *a)
+	log.Printf("Start server on %v", a)
 
-	return http.ListenAndServe(*a, r)
+	return http.ListenAndServe(a, r)
 }
 
 func main() {
-	flag.Parse()
 	if err := run(); err != nil {
 		panic(err)
 	}
