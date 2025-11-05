@@ -2,14 +2,14 @@ package main
 
 import (
 	"net/http"
-	"log"
-	
-	"github.com/go-chi/chi/v5"
-	//"github.com/go-chi/chi/v5/middleware"
+	//"log"
 
+	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
+
+	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 	"github.com/TheLuckymadman/metawatch/internal/handler"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
-	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 )
 
 var (
@@ -20,14 +20,28 @@ func run() error {
 	cfg := serverconfig.Load()
 	a = (*cfg).ServerURL
 
+	var sugar zap.SugaredLogger
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	sugar = *logger.Sugar()
+
 	s := repository.NewStorage()
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
-	r.Post("/update/{type}/*", handler.MetricReceiverHandler(s))
-	r.Get("/value/*", handler.MetricGetterHandler(s))
-	r.Get("/", handler.MetricsGetterHandler(s))
+	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricReceiverHandler(s), handler.LoggerWrapper(sugar)))
+	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(s), handler.LoggerWrapper(sugar)))
+	r.Get("/", handler.MiddlewareConveyor(handler.MetricsGetterHandler(s), handler.LoggerWrapper(sugar)))
 
-	log.Printf("Start server on %v", a)
+	//log.Printf("Start server on %v", a)
+	sugar.Infow(
+		"Starting server",
+		"addr",
+		a,
+	)
 
 	return http.ListenAndServe(a, r)
 }

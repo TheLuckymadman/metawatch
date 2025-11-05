@@ -11,12 +11,75 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
 )
+
+type (
+	responseData struct {
+		status int
+		size int
+	}
+	ResponseWriterLogger struct {
+		http.ResponseWriter
+		responseData responseData
+	}
+)
+
+func (r *ResponseWriterLogger) Write(b []byte) (int, error) {
+	size, err := r.ResponseWriter.Write(b)
+	r.responseData.size = size
+	return size, err
+}
+
+func (r *ResponseWriterLogger) WriteHeader(statusCode int) {
+	r.responseData.status = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+type Middleware func(http.HandlerFunc) http.HandlerFunc
+
+func MiddlewareConveyor(h http.HandlerFunc, m ...Middleware) http.HandlerFunc {
+	for i := len(m)-1; i >= 0; i-- {
+		h = m[i](h)
+	}
+	return h
+}
+
+func LoggerWrapper(sugar zap.SugaredLogger) func(h http.HandlerFunc) http.HandlerFunc {
+	f := func(h http.HandlerFunc) http.HandlerFunc {	
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			uri := r.RequestURI
+			method := r.Method
+
+			rwl := ResponseWriterLogger{
+				w, responseData{},
+			}
+
+
+			h.ServeHTTP(&rwl, r)
+
+			duration := time.Since(start)
+			
+			sugar.Infoln(
+				"uri", uri,
+				"method", method,
+				"duration", duration,
+				"r_status", rwl.responseData.status,
+				"r_size", rwl.responseData.size,
+			)
+
+		}) 
+	}
+
+	return f
+}
 
 func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +111,7 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 			metricType = model.Counter
 			value, err := strconv.ParseInt(metricValue, 10, 64)
 			if err != nil {
-				http.Error(w, "ivalid metric values\n", http.StatusBadRequest)
+				http.Error(w, "invalid metric values\n", http.StatusBadRequest)
 				return
 			}
 			err = s.SetMetric(agentIP, metricType, metricName, 0, value)
@@ -62,7 +125,7 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 			metricType = model.Gauge
 			value, err := strconv.ParseFloat(metricValue, 64)
 			if err != nil {
-				http.Error(w, "ivalid metric values\n", http.StatusBadRequest)
+				http.Error(w, "invalid metric values\n", http.StatusBadRequest)
 				return 
 			}
 			err = s.SetMetric(agentIP, metricType, metricName, value, 0)
@@ -73,11 +136,12 @@ func MetricReceiverHandler(s repository.Storage) http.HandlerFunc {
 			}
 
 		default:
-			http.Error(w, "ivalid metric type\n", http.StatusBadRequest)
+			http.Error(w, "invalid metric type\n", http.StatusBadRequest)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		var reply = struct {
 			Status string `json:"status"`
 		}{Status: "ok"}
@@ -96,7 +160,7 @@ func MetricGetterHandler(s repository.Storage) http.HandlerFunc {
 		reqPath := regexp.MustCompile(`^/value/(\w+)/([\w\-.]+)$`)
 		matches := reqPath.FindStringSubmatch(r.URL.Path)
 		if len(matches) != 3 {
-			http.Error(w, "invalid path format. Use: /update/metrictype/metricname/values\n", http.StatusNotFound)
+			http.Error(w, "invalid path format. Use: /value/metrictype/metricname/values\n", http.StatusNotFound)
 			return
 		}
 		regMetricType := matches[1]
@@ -132,6 +196,7 @@ func MetricGetterHandler(s repository.Storage) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
 		if _, err := io.WriteString(w, body); err != nil {
 			log.Printf("failed to write response body: %v", err)
 		}
@@ -207,6 +272,7 @@ func MetricsGetterHandler(s repository.Storage) http.HandlerFunc {
 		</html>`
 
 		w.Header().Set("Content-Type", "text/html")
+		 w.WriteHeader(http.StatusOK)
 		io.WriteString(w, body)
 	})
 }
