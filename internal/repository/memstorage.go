@@ -18,7 +18,7 @@ func NewStorage() *MemStorage {
 	}
 }
 
-func (m *MemStorage) SetMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
+func (m *MemStorage) AddMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
 	key := agentID + "_" + metricName
 
 	m.Lock()
@@ -74,4 +74,17 @@ func (m *MemStorage) GetMetric(agentID string, metricType string, metricName str
 	}
 
 	return 0, 0, fmt.Errorf("metric %q has no value", key)
+}
+
+func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName string) (*model.Metrics, error) {
+	key := agentID + "_" + metricName
+
+	m.RLock()
+	agentMetrics, ok := m.Metrics[key]
+	m.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("metric not found, key: %q", key)
+	}
+	return  agentMetrics, nil
 }

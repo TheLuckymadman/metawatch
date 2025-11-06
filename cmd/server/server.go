@@ -32,9 +32,11 @@ func run() error {
 	s := repository.NewStorage()
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
-	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricReceiverHandler(s), handler.LoggerWrapper(sugar)))
+	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(s), handler.LoggerWrapper(sugar)))
+	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(s), handler.LoggerWrapper(sugar)))
 	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(s), handler.LoggerWrapper(sugar)))
-	r.Get("/", handler.MiddlewareConveyor(handler.MetricsGetterHandler(s), handler.LoggerWrapper(sugar)))
+	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(s), handler.LoggerWrapper(sugar)))
+	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(s), handler.LoggerWrapper(sugar)))
 
 	//log.Printf("Start server on %v", a)
 	sugar.Infow(

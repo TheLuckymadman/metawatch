@@ -8,7 +8,6 @@ import (
 	"syscall"
 	"time"
 
-
 	"github.com/TheLuckymadman/metawatch/internal/agent"
 	"github.com/TheLuckymadman/metawatch/internal/config/agentconfig"
 	"github.com/TheLuckymadman/metawatch/internal/model"
@@ -69,5 +68,5 @@ func main() {
 	}()
 
 	<- ctx.Done()
-	log.Printf("Agent is shutting down garcefully")
+	log.Printf("Agent is shutting down gracefully")
 }

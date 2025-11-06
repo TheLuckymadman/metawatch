@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -58,34 +57,16 @@ func (lm *LocalMetrics) GetMetrics() {
 
 func (lm *LocalMetrics) SendMetrics(s string) {
 	client := &http.Client{}
-	var url string
+	
 	lm.RLock()
 	copyMetrics := lm.M
 	var nonsentMetrics []model.Metrics
 	lm.RUnlock()
-	for i := range copyMetrics {
-		switch copyMetrics[i].MType {
-		case model.Counter:
-			url = fmt.Sprintf("%s/update/%s/%s/%d", s, copyMetrics[i].MType, copyMetrics[i].ID, *copyMetrics[i].Delta)
-		case model.Gauge:
-			url = fmt.Sprintf("%s/update/%s/%s/%f", s, copyMetrics[i].MType, copyMetrics[i].ID, *copyMetrics[i].Value)
-		}
-		request, err := http.NewRequest(http.MethodPost, url, nil)
+	for i, m := range copyMetrics {
+		err := SendObjMetrics(client, s, m)
 		if err != nil {
-			log.Printf("Create request failed: %v", err)
 			nonsentMetrics = append(nonsentMetrics, copyMetrics[i])
-			continue
 		}
-		request.Header.Set("Content-Type", "text/plain")
-		response, err := client.Do(request)
-		if err != nil {
-			log.Printf("Send metric (ID: %s, Type: %s) failed with: %v\n", copyMetrics[i].ID, copyMetrics[i].MType, err.Error())
-			nonsentMetrics = append(nonsentMetrics, copyMetrics[i])
-			continue
-
-		}
-		log.Printf("Send metric on %v successfully: %v\n", url, response)
-		response.Body.Close()
 	}
 	lm.Lock()
 	lm.M = nil
