@@ -56,7 +56,7 @@ func TestServer(t *testing.T) {
 		},
 	}
 
-	storage := repository.NewStorage()
+	storage := repository.NewMemStorage()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T){

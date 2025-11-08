@@ -58,12 +58,14 @@ func (lm *LocalMetrics) GetMetrics() {
 func (lm *LocalMetrics) SendMetrics(s string) {
 	client := &http.Client{}
 	
+	sender := jsonSender{client, s, true}
+
 	lm.RLock()
 	copyMetrics := lm.M
 	var nonsentMetrics []model.Metrics
 	lm.RUnlock()
 	for i, m := range copyMetrics {
-		err := SendObjMetrics(client, s, m)
+		err := sender.SendMetric(m)
 		if err != nil {
 			nonsentMetrics = append(nonsentMetrics, copyMetrics[i])
 		}

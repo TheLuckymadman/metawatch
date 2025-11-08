@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	//"log"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -14,11 +13,16 @@ import (
 
 var (
 	a string
+	fileStoragePath string
+	storeInterval int
+	restore bool
 )
 
 func run() error {
 	cfg := serverconfig.Load()
-	a = (*cfg).ServerURL
+	a = cfg.ServerURL
+	fileStoragePath = cfg.FileStoragePath
+	restore = cfg.Restore
 
 	var sugar zap.SugaredLogger
 	logger, err := zap.NewDevelopment()
@@ -29,7 +33,7 @@ func run() error {
 
 	sugar = *logger.Sugar()
 
-	s := repository.NewStorage()
+	s := repository.NewFileStorage(fileStoragePath, storeInterval, restore)
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
 	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(s), handler.LoggerWrapper(sugar)))

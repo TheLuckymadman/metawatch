@@ -12,7 +12,19 @@ type MemStorage struct {
 	sync.RWMutex
 }
 
-func NewStorage() *MemStorage {
+func (m *MemStorage) GetStore() map[string]*model.Metrics {
+	m.RLock()
+	defer m.RUnlock()
+
+	copyMemStorage := make(map[string]*model.Metrics, len(m.Metrics))
+	for k, v := range m.Metrics {
+		copyMemStorage[k] = v
+	}
+	return copyMemStorage
+
+}
+
+func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		Metrics: make(map[string]*model.Metrics),
 	}

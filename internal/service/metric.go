@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
-	"github.com/TheLuckymadman/metawatch/internal/repository"
 )
 
 func AddMetric(metricName string, metricValue string, metricType string, agentIP string, s Storage) error {
@@ -91,16 +90,13 @@ func GetObjMetric(metricReq model.Metrics, agentIP string, s Storage) (metricRes
 }
 
 func ListMetric(s Storage) (map[string]*model.Metrics, []string, error) {
-	memStorage := s.(*repository.MemStorage)
-	memStorage.RLock()
-	copyMemStorage := s.(*repository.MemStorage).Metrics
-	memStorage.RUnlock()
+	memStorage := s.GetStore()
 
-	sortedMetrics := make([]string, 0, len(copyMemStorage))
-	for k := range copyMemStorage {
+	sortedMetrics := make([]string, 0, len(memStorage))
+	for k := range memStorage {
 		sortedMetrics = append(sortedMetrics, k)
 	}
 	sort.Strings(sortedMetrics)
 
-	return copyMemStorage, sortedMetrics, nil
+	return memStorage, sortedMetrics, nil
 }
