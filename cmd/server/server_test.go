@@ -15,9 +15,9 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/handler"
 	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
+	"github.com/TheLuckymadman/metawatch/internal/service"
 	"github.com/TheLuckymadman/metawatch/internal/utils"
 )
-
 
 func TestServer(t *testing.T) {
 	type want struct {
@@ -56,13 +56,14 @@ func TestServer(t *testing.T) {
 		},
 	}
 
-	storage := repository.NewStorage()
+	s := repository.NewMemStorage()
+	srv := service.NewService(s)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T){
 			r := chi.NewRouter()
-			r.Post("/update/{type}/*", handler.MetricReceiverHandler(storage))
-			r.Get("/value/*", handler.MetricGetterHandler(storage))
+			r.Post("/update/{type}/*", handler.MetricSetterHandler(srv))
+			r.Get("/value/*", handler.MetricGetterHandler(srv))
 
 			// set metrics
 			var path string

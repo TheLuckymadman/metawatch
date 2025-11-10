@@ -12,13 +12,25 @@ type MemStorage struct {
 	sync.RWMutex
 }
 
-func NewStorage() *MemStorage {
+func (m *MemStorage) GetStore() map[string]*model.Metrics {
+	m.RLock()
+	defer m.RUnlock()
+
+	copyMemStorage := make(map[string]*model.Metrics, len(m.Metrics))
+	for k, v := range m.Metrics {
+		copyMemStorage[k] = v
+	}
+	return copyMemStorage
+
+}
+
+func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		Metrics: make(map[string]*model.Metrics),
 	}
 }
 
-func (m *MemStorage) SetMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
+func (m *MemStorage) AddMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
 	key := agentID + "_" + metricName
 
 	m.Lock()
@@ -74,4 +86,17 @@ func (m *MemStorage) GetMetric(agentID string, metricType string, metricName str
 	}
 
 	return 0, 0, fmt.Errorf("metric %q has no value", key)
+}
+
+func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName string) (*model.Metrics, error) {
+	key := agentID + "_" + metricName
+
+	m.RLock()
+	agentMetrics, ok := m.Metrics[key]
+	m.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("metric not found, key: %q", key)
+	}
+	return  agentMetrics, nil
 }
