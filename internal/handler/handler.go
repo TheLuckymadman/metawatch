@@ -13,10 +13,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	
 	"github.com/TheLuckymadman/metawatch/internal/model"
-	"github.com/TheLuckymadman/metawatch/internal/service"
 )
 
-func MetricSetterHandler(s service.Storage) http.HandlerFunc {
+func MetricSetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
 		if r.Method != http.MethodPost {
@@ -34,14 +33,14 @@ func MetricSetterHandler(s service.Storage) http.HandlerFunc {
 		reqPath := regexp.MustCompile(`^(.+)/(.+)$`)
 		matches := reqPath.FindStringSubmatch(restPath)
 		if len(matches) < 3 {
-			http.Error(w, "invalid path format . Use: /update/metrictype/metricname/values\n", http.StatusNotFound)
+			http.Error(w, "invalid path format . Use: /update/metrictype/metricname/values", http.StatusNotFound)
 			return
 		}
 		metricName := matches[1]
 		metricValue := matches[2]
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 
-		err := service.AddMetric(metricName, metricValue, metricType, agentIP, s)
+		err := s.AddMetric(metricName, metricValue, metricType, agentIP)
 		if err != nil {
 			http.Error(w, "invalid metric values\n", http.StatusBadRequest)
 			return
@@ -52,12 +51,18 @@ func MetricSetterHandler(s service.Storage) http.HandlerFunc {
 		var reply = struct {
 			Status string `json:"status"`
 		}{Status: "ok"}
-		body, _ := json.Marshal(reply)
-		w.Write(body)
+		body, err := json.Marshal(reply)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return 
+		}
+		if _, err := w.Write(body); err != nil {
+			log.Printf("failed to write response body: %v", err)
+		}
 	})
 }
 
-func JSONSetterHandler(s service.Storage) http.HandlerFunc {
+func JSONSetterHandler(s Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request){
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
 		
@@ -78,7 +83,7 @@ func JSONSetterHandler(s service.Storage) http.HandlerFunc {
 			return
 		}
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
-		err := service.AddObjMetric(metric, agentIP, s)
+		err := s.AddObjMetric(metric, agentIP)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return 
@@ -89,12 +94,18 @@ func JSONSetterHandler(s service.Storage) http.HandlerFunc {
 		var reply = struct {
 			Status string `json:"status"`
 		}{Status: "ok"}
-		body, _ := json.Marshal(reply)
-		w.Write(body)
+		body, err := json.Marshal(reply)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return 
+		}
+		if _, err := w.Write(body); err != nil {
+			log.Printf("failed to write response body: %v", err)
+		}
 	}
 }
 
-func MetricGetterHandler(s service.Storage) http.HandlerFunc {
+func MetricGetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
 		if r.Method != http.MethodGet {
@@ -111,7 +122,7 @@ func MetricGetterHandler(s service.Storage) http.HandlerFunc {
 		metricName := matches[2]
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 		
-		body, err := service.GetMetric(metricName, metricType, agentIP, s)
+		body, err := s.GetMetric(metricName, metricType, agentIP)
 		if err != nil {
 			errStr := fmt.Sprintf("There was a error while getting the metric:\n%v", err)
 			http.Error(w, errStr, http.StatusNotFound)
@@ -126,7 +137,7 @@ func MetricGetterHandler(s service.Storage) http.HandlerFunc {
 	})
 }
 
-func JSONGetterHandler(s service.Storage) http.HandlerFunc {
+func JSONGetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
 		
@@ -149,7 +160,7 @@ func JSONGetterHandler(s service.Storage) http.HandlerFunc {
 			return
 		}
 
-		metricResp, err := service.GetObjMetric(metricReq, agentIP, s)
+		metricResp, err := s.GetObjMetric(metricReq, agentIP)
 		if err != nil {
 			log.Printf("Getting object metrics failed with %v", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -166,7 +177,7 @@ func JSONGetterHandler(s service.Storage) http.HandlerFunc {
 	})
 }
 
-func MetricsListHandler(s service.Storage) http.HandlerFunc {
+func MetricsListHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
 		if r.Method != http.MethodGet {
@@ -174,7 +185,7 @@ func MetricsListHandler(s service.Storage) http.HandlerFunc {
 			return
 		}
 		
-		memStorage, metricIdx, err := service.ListMetric(s)
+		memStorage, metricIdx, err := s.ListMetric()
 		if err != nil {
 			errStr := fmt.Sprintf("There was a error while listing metrics:\n%v", err)
 			http.Error(w, errStr, http.StatusInternalServerError)
@@ -233,6 +244,8 @@ func MetricsListHandler(s service.Storage) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, body)
+		if _, err := io.WriteString(w, body); err != nil {
+			log.Printf("failed to write response body: %v", err)
+		}
 	})
 }

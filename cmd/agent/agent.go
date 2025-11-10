@@ -14,22 +14,10 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/utils"
 )
 
-var (
-	serverURL     string
-	pollInterval   int
-	reportInterval int
-)
-
 func main() {
 	cfg := agentconfig.Load()
-	serverURL = cfg.ServerURL
-	pollInterval = cfg.PollInterval
-	reportInterval = cfg.ReportInterval
-	
-	log.Printf("Start agent with the following params:\nserverUrl: %s, pollInterval: %d, reportInterval: %d", serverURL, pollInterval, reportInterval)
-
+	log.Printf("Start agent with the following params:\nserverUrl: %s, pollInterval: %d, reportInterval: %d", cfg.ServerURL, cfg.PollInterval, cfg.ReportInterval)
 	lm := agent.LocalMetrics{M: make([]model.Metrics, 0, 28), PollCount: utils.Int64Ptr(0)}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	
@@ -40,7 +28,7 @@ func main() {
 				return
 			default:
 				lm.GetMetrics()
-				time.Sleep(time.Duration(pollInterval) * time.Second)
+				time.Sleep(time.Duration(cfg.PollInterval) * time.Second)
 			}
 		}
 	}()
@@ -51,7 +39,7 @@ func main() {
 				return
 			default:
 				lm.ReadMetrics()
-				time.Sleep(time.Duration(reportInterval) * time.Second)
+				time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
 			}
 		}
 	}()
@@ -61,8 +49,8 @@ func main() {
 			case <- ctx.Done():
 				return
 			default:
-				lm.SendMetrics(serverURL)
-				time.Sleep(time.Duration(reportInterval) * time.Second)
+				lm.SendMetrics(cfg.ServerURL)
+				time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
 			}
 		}
 	}()

@@ -8,22 +8,12 @@ import (
 
 	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 	"github.com/TheLuckymadman/metawatch/internal/handler"
+	"github.com/TheLuckymadman/metawatch/internal/service"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
-)
-
-var (
-	a string
-	fileStoragePath string
-	storeInterval int
-	restore bool
 )
 
 func run() error {
 	cfg := serverconfig.Load()
-	a = cfg.ServerURL
-	fileStoragePath = cfg.FileStoragePath
-	restore = cfg.Restore
-
 	var sugar zap.SugaredLogger
 	logger, err := zap.NewDevelopment()
 	if err != nil {
@@ -33,23 +23,24 @@ func run() error {
 
 	sugar = *logger.Sugar()
 
-	s := repository.NewFileStorage(fileStoragePath, storeInterval, restore)
+	s := repository.NewFileStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore)
+	srv := service.NewService(s)
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
-	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(s), handler.LoggerWrapper(sugar)))
-	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(s), handler.LoggerWrapper(sugar), handler.CompressWrapper))
-	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(s), handler.LoggerWrapper(sugar)))
-	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(s), handler.LoggerWrapper(sugar), handler.CompressWrapper))
-	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(s), handler.LoggerWrapper(sugar), handler.CompressWrapper))
+	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(srv), handler.LoggerWrapper(sugar)))
+	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper))
+	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(srv), handler.LoggerWrapper(sugar)))
+	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper))
+	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper))
 
 	//log.Printf("Start server on %v", a)
 	sugar.Infow(
 		"Starting server",
 		"addr",
-		a,
+		cfg.ServerURL,
 	)
 
-	return http.ListenAndServe(a, r)
+	return http.ListenAndServe(cfg.ServerURL, r)
 }
 
 func main() {
