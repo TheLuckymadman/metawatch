@@ -108,3 +108,7 @@ func (s *Service) ListMetric() (map[string]*model.Metrics, []string, error) {
 
 	return memStorage, sortedMetrics, nil
 }
+
+func (s *Service) PingDB() error {
+	return s.storage.PingDB()
+}

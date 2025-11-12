@@ -10,4 +10,5 @@ type Service interface {
 	GetMetric(metricName string, metricType string, agentIP string) (result string, err error)
 	GetObjMetric(metricReq model.Metrics, agentIP string) (metricResp *model.Metrics, err error)
 	ListMetric() (map[string]*model.Metrics, []string, error)
+	PingDB() error
 }

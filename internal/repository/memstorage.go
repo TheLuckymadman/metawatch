@@ -100,3 +100,7 @@ func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName 
 	}
 	return  agentMetrics, nil
 }
+
+func (m *MemStorage) PingDB() error {
+	return nil
+}
