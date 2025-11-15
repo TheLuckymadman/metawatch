@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"context"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
@@ -116,7 +117,7 @@ func (f *FileStorage) Stop() {
 	close(f.stopChan)
 }
 
-func (f *FileStorage) AddMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
+func (f *FileStorage) AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error {
 	key := agentID + "_" + metricName
 
 	f.Lock()

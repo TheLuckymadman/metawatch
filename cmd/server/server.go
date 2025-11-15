@@ -24,8 +24,18 @@ func run() error {
 
 	sugar = *logger.Sugar()
 
-
-	s := repository.NewFileStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore)
+	var s service.Storage
+	s = repository.NewFileStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore)
+	mode := "FileStorage"
+	if cfg.DatabseDSN != "" {
+		mode = "Database"
+		s, err = repository.NewPGDB(cfg.DatabseDSN, cfg.DBInitMode)
+		if err != nil {
+			log.Fatalf("DB connection failed: %v", err)
+		}
+		defer s.Close()
+	}
+	
 	srv := service.NewService(s)
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
@@ -34,24 +44,19 @@ func run() error {
 	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(srv), handler.LoggerWrapper(sugar)))
 	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper))
 	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper))
-	
-	if cfg.DatabseDSN  != "" {
-		db, err := repository.NewPGDB(cfg.DatabseDSN)
-		if err != nil {
-			log.Fatalf("DB connection filed: %v", err)
-		}
-		defer db.Close()
-		srvDB := service.NewService(db)
-		r.Get("/ping", handler.MiddlewareConveyor(handler.PingDB(srvDB), handler.LoggerWrapper(sugar)))
-	}
-	
+	r.Get("/ping", handler.MiddlewareConveyor(handler.PingDB(srv), handler.LoggerWrapper(sugar)))
+
 	//log.Printf("Start server on %v", a)
 	sugar.Infow(
-		"Starting server",
+		"starting server",
 		"addr",
 		cfg.ServerURL,
+		"mode",
+		mode,
+		"db init mode",
+		cfg.DBInitMode,
 	)
-
+	
 	return http.ListenAndServe(cfg.ServerURL, r)
 }
 

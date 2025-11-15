@@ -1,13 +1,16 @@
 package service
 
 import (
+	"context"
+	
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
 type Storage interface {
-	AddMetric(agentID string, metricType string, metricName string, value float64, delta int64) error
-	GetMetric(agentID string, metricType string, metricName string) (value float64, delta int64, err error)
-	GetObjMetric(agentID string, metricType string, metricName string) (*model.Metrics, error)
-	GetStore() map[string]*model.Metrics
-	PingDB() error
+	AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error
+	GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error)
+	GetObjMetric(ctx context.Context, agentID string, metricType string, metricName string) (*model.Metrics, error)
+	GetStore(ctx context.Context) (map[string]*model.Metrics, error)
+	PingDB(ctx context.Context) error
+	Close() error
 }

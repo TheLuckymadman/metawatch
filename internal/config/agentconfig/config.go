@@ -5,7 +5,7 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/caarlos0/env"
+	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {

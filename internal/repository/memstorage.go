@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 	"sync"
+	"context"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
@@ -12,7 +13,7 @@ type MemStorage struct {
 	sync.RWMutex
 }
 
-func (m *MemStorage) GetStore() map[string]*model.Metrics {
+func (m *MemStorage) GetStore(ctx context.Context) (map[string]*model.Metrics, error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -20,7 +21,7 @@ func (m *MemStorage) GetStore() map[string]*model.Metrics {
 	for k, v := range m.Metrics {
 		copyMemStorage[k] = v
 	}
-	return copyMemStorage
+	return copyMemStorage, nil
 
 }
 
@@ -30,7 +31,11 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (m *MemStorage) AddMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
+func (m *MemStorage) Close() error {
+	return nil
+}
+
+func (m *MemStorage) AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error {
 	key := agentID + "_" + metricName
 
 	m.Lock()
@@ -64,7 +69,7 @@ func (m *MemStorage) AddMetric(agentID string, metricType string, metricName str
 	return nil
 }
 
-func (m *MemStorage) GetMetric(agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
+func (m *MemStorage) GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
 	key := agentID + "_" + metricName
 
 	m.RLock()
@@ -88,7 +93,7 @@ func (m *MemStorage) GetMetric(agentID string, metricType string, metricName str
 	return 0, 0, fmt.Errorf("metric %q has no value", key)
 }
 
-func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName string) (*model.Metrics, error) {
+func (m *MemStorage) GetObjMetric(ctx context.Context, agentID string, metricType string, metricName string) (*model.Metrics, error) {
 	key := agentID + "_" + metricName
 
 	m.RLock()
@@ -101,6 +106,6 @@ func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName 
 	return  agentMetrics, nil
 }
 
-func (m *MemStorage) PingDB() error {
+func (m *MemStorage) PingDB(ctx context.Context) error {
 	return nil
 }

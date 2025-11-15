@@ -18,11 +18,12 @@ import (
 func PingDB(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
+		ctx := r.Context()
 		if r.Method != http.MethodGet {
 			http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 			return
 		}
-		err := s.PingDB()
+		err := s.PingDB(ctx)
 		if err != nil {
 			http.Error(w, "DB connection error", http.StatusInternalServerError)
 			return
@@ -64,7 +65,8 @@ func MetricSetterHandler(s Service) http.HandlerFunc {
 		metricValue := matches[2]
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 
-		err := s.AddMetric(metricName, metricValue, metricType, agentIP)
+		ctx := r.Context()
+		err := s.AddMetric(ctx, metricName, metricValue, metricType, agentIP)
 		if err != nil {
 			http.Error(w, "Invalid metric values\n", http.StatusBadRequest)
 			return
@@ -107,7 +109,8 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 			return
 		}
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
-		err := s.AddObjMetric(metric, agentIP)
+		ctx := r.Context()
+		err := s.AddObjMetric(ctx, metric, agentIP)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -146,7 +149,8 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 		metricName := matches[2]
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 
-		body, err := s.GetMetric(metricName, metricType, agentIP)
+		ctx := r.Context()
+		body, err := s.GetMetric(ctx, metricName, metricType, agentIP)
 		if err != nil {
 			errStr := fmt.Sprintf("There was an error while getting the metric:\n%v", err)
 			http.Error(w, errStr, http.StatusNotFound)
@@ -184,7 +188,8 @@ func JSONGetterHandler(s Service) http.HandlerFunc {
 			return
 		}
 
-		metricResp, err := s.GetObjMetric(metricReq, agentIP)
+		ctx := r.Context()
+		metricResp, err := s.GetObjMetric(ctx, metricReq, agentIP)
 		if err != nil {
 			log.Printf("getting object metrics failed with %v", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -209,7 +214,8 @@ func MetricsListHandler(s Service) http.HandlerFunc {
 			return
 		}
 
-		memStorage, metricIdx, err := s.ListMetric()
+		ctx := r.Context()
+		memStorage, metricIdx, err := s.ListMetric(ctx)
 		if err != nil {
 			errStr := fmt.Sprintf("There was an error while listing metrics:\n%v", err)
 			http.Error(w, errStr, http.StatusInternalServerError)
