@@ -1,11 +1,11 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
-	"context"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
@@ -45,41 +45,78 @@ func (s *Service) AddMetric(ctx context.Context, metricName string, metricValue 
 }
 
 func (s *Service) AddObjMetric(ctx context.Context, metric model.Metrics, agentIP string) error {
+	metrics := []model.Metrics{metric}
 	switch metric.MType {
-	case model.Counter: {
-		err := s.storage.AddMetric(ctx, agentIP, metric.MType, metric.ID, 0, *metric.Delta)
-		if err != nil {
-			return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+	case model.Counter:
+		{
+			if metric.Delta == nil {
+				return fmt.Errorf("no delta value error")
+			}
 		}
-	}
-	case model.Gauge: {
-		err := s.storage.AddMetric(ctx, agentIP, metric.MType, metric.ID, *metric.Value, 0)
-		if err != nil {
-			return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+	case model.Gauge:
+		{
+			if metric.Value == nil {
+				return fmt.Errorf("no value error")
+			}
 		}
-	}
 	default:
-		return fmt.Errorf("invalid metric type") 
+		return fmt.Errorf("invalid metric type")
+	}
+
+	err := s.storage.AddMetrics(ctx, agentIP, metrics)
+	if err != nil {
+		return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+	}
+	return nil
+}
+
+func (s *Service) AddObjMetrics(ctx context.Context, metrics []model.Metrics, agentIP string) error {
+	if len(metrics) == 0 {
+		return fmt.Errorf("no metrics provided")
+	}
+	for _, metric := range metrics {
+		switch metric.MType {
+		case model.Counter:
+			{
+				if metric.Delta == nil || metric.ID == "" {
+					return fmt.Errorf("missed metric attributes %v", metric)
+				}
+			}
+		case model.Gauge:
+			{
+				if metric.Value == nil || metric.ID == "" {
+					return fmt.Errorf("missed metric attributes %v", metric)
+				}
+			}
+		default:
+			return fmt.Errorf("wrong metric  type")
+		}
+	}
+	err := s.storage.AddMetrics(ctx, agentIP, metrics)
+	if err != nil {
+		return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
 	}
 	return nil
 }
 
 func (s *Service) GetMetric(ctx context.Context, metricName string, metricType string, agentIP string) (result string, err error) {
 	switch metricType {
-	case model.Counter: {
-		_, delta, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
-		if err != nil {
-			return "", fmt.Errorf("there was an error while getting metric:\n%v", err)
+	case model.Counter:
+		{
+			_, delta, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
+			if err != nil {
+				return "", fmt.Errorf("there was an error while getting metric:\n%v", err)
+			}
+			result = fmt.Sprintf("%d", delta)
 		}
-		result = fmt.Sprintf("%d", delta)
-	}
-	case model.Gauge: {
-		value, _, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
-		if err != nil {
-			return "", fmt.Errorf("there was an error while getting metric:\n%v", err)
+	case model.Gauge:
+		{
+			value, _, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
+			if err != nil {
+				return "", fmt.Errorf("there was an error while getting metric:\n%v", err)
+			}
+			result = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
 		}
-		result = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
-	}
 	default:
 		return "", fmt.Errorf("invalid metric type")
 	}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -29,7 +30,7 @@ func PingDB(s Service) http.HandlerFunc {
 			return
 		}
 		body := "DB connection is OK"
-		
+
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, err = io.WriteString(w, body)
@@ -94,7 +95,6 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 
 		if r.Header.Get("Content-Type") != "application/json" {
 			http.Error(w, "Unsupported content type", http.StatusMethodNotAllowed)
-			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -102,15 +102,41 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 			return
 		}
 
-		var metric model.Metrics
-		jsonDecoder := json.NewDecoder(r.Body)
-		if err := jsonDecoder.Decode(&metric); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Body read failed", http.StatusBadRequest)
 			return
 		}
+		trimmed := bytes.TrimSpace(body)
+		if len(trimmed) == 0 {
+			http.Error(w, "No data in body", http.StatusBadRequest)
+			return
+		}
+
+		var metric model.Metrics
+		var metrics []model.Metrics
+		switch string(trimmed[0]) {
+		case `[`:
+			err := json.Unmarshal(trimmed, &metrics)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		case `{`:
+			err := json.Unmarshal(trimmed, &metric)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			metrics = append(metrics, metric)
+		default:
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 		ctx := r.Context()
-		err := s.AddObjMetric(ctx, metric, agentIP)
+		err = s.AddObjMetrics(ctx, metrics, agentIP)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -121,7 +147,7 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 		var reply = struct {
 			Status string `json:"status"`
 		}{Status: "ok"}
-		body, err := json.Marshal(reply)
+		body, err = json.Marshal(reply)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

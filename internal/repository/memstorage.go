@@ -1,9 +1,9 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sync"
-	"context"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
@@ -36,36 +36,58 @@ func (m *MemStorage) Close() error {
 }
 
 func (m *MemStorage) AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error {
-	key := agentID + "_" + metricName
-
-	m.Lock()
-	metric, ok := m.Metrics[key]
-	if !ok {
-		m.Metrics[key] = &model.Metrics{
-			ID: metricName,
-			MType: metricType,
-		}
-		metric = m.Metrics[key]
+	metric := model.Metrics{
+		ID:    metricName,
+		MType: metricType,
 	}
-	m.Unlock()
-	// defer metric.Unlock()
-
-	// metric.Lock()
 	switch metricType {
-	case model.Counter: {
-		if metric.Delta == nil {
-			metric.Delta = new(int64)
-		}
-		*metric.Delta += delta
-		metric.Value = nil
-	}
-	
-	case model.Gauge: {
-		metric.Delta = nil
+	case model.Counter:
+		//d := delta
+		metric.Delta = &delta
+	case model.Gauge:
+		//v := value
 		metric.Value = &value
 	}
+	metrics := []model.Metrics{metric}
+	return m.AddMetrics(ctx, agentID, metrics)
+}
+
+func (m *MemStorage) AddMetrics(ctx context.Context, agentID string, metrics []model.Metrics) error {
+	m.Lock()
+	defer m.Unlock()
+	for _, recMetric := range metrics {
+		key := agentID + "_" + recMetric.ID
+
+		metric, ok := m.Metrics[key]
+		if !ok {
+			newMetric := recMetric
+			m.Metrics[key] = &newMetric
+			continue
+		}
+
+		switch recMetric.MType {
+		case model.Counter:
+			{
+				if metric.Delta == nil {
+					metric.Delta = new(int64)
+				}
+				if recMetric.Delta != nil {
+
+					*metric.Delta += *recMetric.Delta
+					metric.Value = nil
+				}
+			}
+		case model.Gauge:
+			{
+				metric.Delta = nil
+				newValues := *recMetric.Value
+				metric.Value = &newValues
+			}
+			m.Metrics[key] = metric
+		}
+		// defer metric.Unlock()
+		// metric.Lock()
 	}
-	
 	return nil
 }
 
@@ -103,7 +125,7 @@ func (m *MemStorage) GetObjMetric(ctx context.Context, agentID string, metricTyp
 	if !ok {
 		return nil, fmt.Errorf("metric not found, key: %q", key)
 	}
-	return  agentMetrics, nil
+	return agentMetrics, nil
 }
 
 func (m *MemStorage) PingDB(ctx context.Context) error {

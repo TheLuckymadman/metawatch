@@ -180,6 +180,76 @@ func (p *PGStorage) AddMetric(ctx context.Context, agentID string, metricType st
 	return nil
 }
 
+func (p *PGStorage) AddMetrics(ctx context.Context, agentID string, metrics []model.Metrics) (err error) {
+	log.Println("AddMetrics is starting")
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	for _, m := range metrics {
+		var d any
+		if m.Delta != nil {
+			d = *m.Delta
+		} else {
+			d = nil
+		}
+		var v any
+		if m.Value != nil {
+			v = *m.Value
+		} else {
+			v = nil
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE metrics 
+		SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
+			value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+			updated_at = now()
+		WHERE agent_id=$1 AND id=$2 AND mtype=$3
+		`, agentID, m.ID, m.MType, d, v)
+		if err != nil {
+			return err
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			_, err = tx.ExecContext(ctx, `
+		INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
+		VALUES ($1,$2,$3,
+			CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
+			CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+			now())
+			`, agentID, m.ID, m.MType, d, v)
+			if err != nil {
+				var pgErr *pgconn.PgError
+				if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+					_, err = tx.ExecContext(ctx, `
+					UPDATE metrics
+					SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
+						value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
+						updated_at = now()
+					WHERE agent_id=$1 AND id=$2 AND mtype=$3
+				`, agentID, m.ID, m.MType, d, v)
+					if err != nil {
+						return err
+					}
+					continue
+				}
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (p *PGStorage) GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
 	var v sql.NullFloat64
 	var d sql.NullInt64

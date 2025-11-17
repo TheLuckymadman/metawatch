@@ -24,7 +24,7 @@ func GetDefaultConfig() *Config {
 		ServerURL:       "localhost:8080",
 		StoreInterval:   300,
 		FileStoragePath: "metrics.txt",
-		Restore:         true,
+		Restore:         false,
 	}
 }
 

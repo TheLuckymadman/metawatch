@@ -1,33 +1,36 @@
 package agentconfig
 
 import (
-	"log"
 	"flag"
+	"log"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {
-	ServerURL string `env:"ADDRESS"`
-	PollInterval int `env:"POLL_INTERVAL"`
-	ReportInterval int `env:"REPORT_INTERVAL"`
+	ServerURL      string `env:"ADDRESS"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
+	BatchSize      int    `env:"BATCH_SIZE"`
 }
 
-func GetDefaultConfig() Config{
+func GetDefaultConfig() Config {
 	return Config{
-	ServerURL: "http://127.0.0.1:8080",
-	PollInterval: 2,
-	ReportInterval: 10,
+		ServerURL:      "http://127.0.0.1:8080",
+		PollInterval:   2,
+		ReportInterval: 10,
+		BatchSize:      50,
 	}
 }
 
 func Load() Config {
 	cfg := GetDefaultConfig()
 	flag.StringVar(&cfg.ServerURL, "a", cfg.ServerURL, "server endpoint address in the format http://server:port")
-	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "fetching metrics frequency") 
+	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "fetching metrics frequency")
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "sending metrics frequency")
-	
+	flag.IntVar(&cfg.BatchSize, "b", cfg.BatchSize, "batch size")
+
 	flag.Parse()
 
 	err := env.Parse(&cfg)
@@ -36,8 +39,8 @@ func Load() Config {
 	}
 
 	if !strings.HasPrefix(cfg.ServerURL, "http://") && !strings.HasPrefix(cfg.ServerURL, "https://") {
-        cfg.ServerURL = "http://" + cfg.ServerURL
-    }
+		cfg.ServerURL = "http://" + cfg.ServerURL
+	}
 
-	return  cfg
+	return cfg
 }

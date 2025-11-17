@@ -49,7 +49,7 @@ func main() {
 			case <- ctx.Done():
 				return
 			default:
-				lm.SendMetrics(cfg.ServerURL)
+				lm.SendMetrics(cfg.ServerURL, cfg.BatchSize)
 				time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
 			}
 		}

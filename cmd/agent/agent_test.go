@@ -45,7 +45,7 @@ func TestSendMetrics(t *testing.T) {
 		PollCount: utils.Int64Ptr(1),
 	}
 
-	lm.SendMetrics("localhost:8080")
+	lm.SendMetrics("localhost:8080", 100)
 
 	if len(lm.M) == 0 {
 		t.Errorf("Expected the metrics be kept on send failure")

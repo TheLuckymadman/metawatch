@@ -10,6 +10,7 @@ type Storage interface {
 	AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error
 	GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error)
 	GetObjMetric(ctx context.Context, agentID string, metricType string, metricName string) (*model.Metrics, error)
+	AddMetrics(ctx context.Context, agentID string, metrics []model.Metrics) error
 	GetStore(ctx context.Context) (map[string]*model.Metrics, error)
 	PingDB(ctx context.Context) error
 	Close() error
