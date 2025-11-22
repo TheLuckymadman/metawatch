@@ -138,6 +138,7 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 		ctx := r.Context()
 		err = s.AddObjMetrics(ctx, metrics, agentIP)
 		if err != nil {
+			log.Println(err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

@@ -99,7 +99,7 @@ func (j jsonSender) SendMetrics(metrics []model.Metrics) error {
 	metricsJSON, err := json.Marshal(&metrics)
 	if err != nil {
 		log.Printf("marshalling metrics data failed with error: %v", err)
-		return fmt.Errorf("marshalling metrics data failed with error: %v", err)
+		return fmt.Errorf("marshalling metrics data failed with error: %w", err)
 	}
 	var body bytes.Buffer
 	if j.compress {
@@ -108,11 +108,11 @@ func (j jsonSender) SendMetrics(metrics []model.Metrics) error {
 		_, err = gzipBody.Write(metricsJSON)
 		
 		if err != nil {
-			return fmt.Errorf("gzip write failed: %v", err)
+			return fmt.Errorf("gzip write failed: %w", err)
 		}
 
 		if err := gzipBody.Close(); err != nil {
-		return fmt.Errorf("gzip close failed: %v", err)
+		return fmt.Errorf("gzip close failed: %w", err)
 		}
 	} else {
 		body.Write(metricsJSON)	
@@ -121,7 +121,7 @@ func (j jsonSender) SendMetrics(metrics []model.Metrics) error {
 	request, err := http.NewRequest(http.MethodPost, url, &body)
 	if err != nil {
 		log.Printf("creating request failed: %v", err)
-		return fmt.Errorf("creating request failed: %v", err)
+		return fmt.Errorf("creating request failed: %w", err)
 	}
 	if j.compress {
 		request.Header.Set("Content-Encoding", "gzip")
@@ -130,7 +130,7 @@ func (j jsonSender) SendMetrics(metrics []model.Metrics) error {
 	response, err := j.client.Do(request)
 	if err != nil {
 		log.Printf("sending the metrics batch failed with: %v", err)
-		return fmt.Errorf("sending the metrics batch failed with: %v", err)
+		return fmt.Errorf("sending the metrics batch failed with: %w", err)
 	}
 	defer response.Body.Close()
 	log.Printf("sending metrics batch on %v with status: %v", url, response.Status)

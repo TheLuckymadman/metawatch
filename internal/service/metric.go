@@ -94,7 +94,7 @@ func (s *Service) AddObjMetrics(ctx context.Context, metrics []model.Metrics, ag
 	}
 	err := s.storage.AddMetrics(ctx, agentIP, metrics)
 	if err != nil {
-		return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+		return fmt.Errorf("there was an error while adding metrics to the database:\n%w", err)
 	}
 	return nil
 }

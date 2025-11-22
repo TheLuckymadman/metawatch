@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -18,9 +25,11 @@ func run() error {
 	var sugar zap.SugaredLogger
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("init logger: %w", err)
 	}
-	defer logger.Sync()
+	defer func() {
+		_ = logger.Sync()
+	}()
 
 	sugar = *logger.Sugar()
 
@@ -31,11 +40,16 @@ func run() error {
 		mode = "Database"
 		s, err = repository.NewPGDB(cfg.DatabseDSN, cfg.DBInitMode)
 		if err != nil {
-			log.Fatalf("DB connection failed: %v", err)
+			//log.Fatalf("DB connection failed: %v", err)
+			return fmt.Errorf("DB connection failed: %w", err)
 		}
-		defer s.Close()
+		defer func() {
+			if err := s.Close(); err != nil {
+				sugar.Errorf("close storage: %v", err)
+			}
+		}()
 	}
-	
+
 	srv := service.NewService(s)
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
@@ -48,6 +62,16 @@ func run() error {
 	r.Get("/ping", handler.MiddlewareConveyor(handler.PingDB(srv), handler.LoggerWrapper(sugar)))
 
 	//log.Printf("Start server on %v", a)
+
+	server := &http.Server{
+		Addr:              cfg.ServerURL,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
 	sugar.Infow(
 		"starting server",
 		"addr",
@@ -57,12 +81,38 @@ func run() error {
 		"db init mode",
 		cfg.DBInitMode,
 	)
-	
-	return http.ListenAndServe(cfg.ServerURL, r)
+
+	errCh := make(chan error, 1)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case <-stopCtx.Done():
+		{
+			sugar.Infow("shutting down...")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				_ = server.Close()
+				return fmt.Errorf("server shutdown: %w", err)
+			}
+			sugar.Infow("server stopped cleanly")
+			return nil
+		}
+	case err := <-errCh:
+		return fmt.Errorf("server err: %w", err)
+	}
 }
 
 func main() {
 	if err := run(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

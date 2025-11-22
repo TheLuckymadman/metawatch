@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"log"
 	"math/rand"
 	"net/http"
@@ -72,9 +73,16 @@ func (lm *LocalMetrics) SendMetrics(s string, b int) {
 	lm.M = lm.M[sz:]
 	lm.Unlock()
 
-	err := sender.SendMetrics(copyMetrics)
+	type result struct{}
+	f := func() (result, error) {
+		err := sender.SendMetrics(copyMetrics)
+		return result{}, err
+	}
+	_, err := utils.WithRetry(context.Background(), f)
+	
 	if err != nil {
 		lm.Lock()
+		log.Printf("%v", err)
 		newMetrics := make([]model.Metrics, 0, len(copyMetrics)+len(lm.M))
 		newMetrics = append(newMetrics, copyMetrics...)
 		newMetrics = append(newMetrics, lm.M...)

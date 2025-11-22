@@ -16,6 +16,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
+	"github.com/TheLuckymadman/metawatch/internal/utils"
 )
 
 type DBInitMode int
@@ -117,237 +118,270 @@ func (p *PGStorage) Close() error {
 }
 
 func (p *PGStorage) PingDB(ctx context.Context) error {
-	if err := p.DB.PingContext(ctx); err != nil {
-		return fmt.Errorf("failed to ping DB: %w", err)
+	type result struct{}
+	f := func() (result, error) {
+		return result{}, p.DB.PingContext(ctx)
 	}
-	return nil
+	_, err := utils.WithRetry(ctx, f)
+	return err
 }
 
 func (p *PGStorage) AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) (err error) {
 	log.Println("AddMetric is starting")
-	tx, err := p.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
+	type result struct{}
+	f := func() (result result, err error) {
+		tx, err := p.DB.BeginTx(ctx, nil)
 		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
+			return result, err
 		}
-	}()
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback()
+			} else {
+				err = tx.Commit()
+			}
+		}()
 
-	res, err := tx.ExecContext(ctx, `UPDATE metrics 
-		SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
-			value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
-			updated_at = now()
-		WHERE agent_id=$1 AND id=$2 AND mtype=$3
-		`, agentID, metricName, metricType, delta, value)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		_, err = tx.ExecContext(ctx, `
-		INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
-		VALUES ($1,$2,$3,
-			CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
-			CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
-			now())
+		res, err := tx.ExecContext(ctx, `UPDATE metrics 
+			SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4::bigint ELSE NULL END,
+				value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+				updated_at = now()
+			WHERE agent_id=$1 AND id=$2 AND mtype=$3
 			`, agentID, metricName, metricType, delta, value)
 		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-				_, err = tx.ExecContext(ctx, `
-					UPDATE metrics
-					SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
-						value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
-						updated_at = now()
-					WHERE agent_id=$1 AND id=$2 AND mtype=$3
-				`, agentID, metricName, metricType, delta, value)
-				if err != nil {
-					return err
-				}
-				return nil
-			}
-			return err
-		}
-		return nil
-	}
-	return nil
-}
-
-func (p *PGStorage) AddMetrics(ctx context.Context, agentID string, metrics []model.Metrics) (err error) {
-	log.Println("AddMetrics is starting")
-	tx, err := p.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
-
-	for _, m := range metrics {
-		var d any
-		if m.Delta != nil {
-			d = *m.Delta
-		} else {
-			d = nil
-		}
-		var v any
-		if m.Value != nil {
-			v = *m.Value
-		} else {
-			v = nil
-		}
-		res, err := tx.ExecContext(ctx, `UPDATE metrics 
-		SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
-			value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
-			updated_at = now()
-		WHERE agent_id=$1 AND id=$2 AND mtype=$3
-		`, agentID, m.ID, m.MType, d, v)
-		if err != nil {
-			return err
+			return result, err
 		}
 		rows, err := res.RowsAffected()
 		if err != nil {
-			return err
+			return result, err
 		}
 		if rows == 0 {
 			_, err = tx.ExecContext(ctx, `
-		INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
-		VALUES ($1,$2,$3,
-			CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
-			CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
-			now())
-			`, agentID, m.ID, m.MType, d, v)
+			INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
+			VALUES ($1,$2,$3,
+				CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
+				CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+				now())
+				`, agentID, metricName, metricType, delta, value)
 			if err != nil {
 				var pgErr *pgconn.PgError
 				if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
 					_, err = tx.ExecContext(ctx, `
-					UPDATE metrics
-					SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
-						value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
-						updated_at = now()
-					WHERE agent_id=$1 AND id=$2 AND mtype=$3
-				`, agentID, m.ID, m.MType, d, v)
+						UPDATE metrics
+						SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4::bigint ELSE NULL END,
+							value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
+							updated_at = now()
+						WHERE agent_id=$1 AND id=$2 AND mtype=$3
+					`, agentID, metricName, metricType, delta, value)
 					if err != nil {
-						return err
+						return result, err
 					}
-					continue
+					return result, nil
 				}
-				return err
+				return result, err
+			}
+			return result, nil
+		}
+		return result, nil
+	}
+	_, err = utils.WithRetry(ctx, f)
+	return err
+}
+
+func (p *PGStorage) AddMetrics(ctx context.Context, agentID string, metrics []model.Metrics) (err error) {
+	log.Println("AddMetrics is starting")
+	type result struct{}
+	f := func() (result result, err error) {
+		tx, err := p.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return result, err
+		}
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback()
+			} else {
+				err = tx.Commit()
+			}
+		}()
+
+		for _, m := range metrics {
+			var d any
+			if m.Delta != nil {
+				d = *m.Delta
+			} else {
+				d = nil
+			}
+			var v any
+			if m.Value != nil {
+				v = *m.Value
+			} else {
+				v = nil
+			}
+			res, err := tx.ExecContext(ctx, `UPDATE metrics 
+			SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
+				value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+				updated_at = now()
+			WHERE agent_id=$1 AND id=$2 AND mtype=$3
+			`, agentID, m.ID, m.MType, d, v)
+			if err != nil {
+				return result, err
+			}
+			rows, err := res.RowsAffected()
+			if err != nil {
+				return result, err
+			}
+			if rows == 0 {
+				_, err = tx.ExecContext(ctx, `
+			INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
+			VALUES ($1,$2,$3,
+				CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
+				CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+				now())
+				`, agentID, m.ID, m.MType, d, v)
+				if err != nil {
+					var pgErr *pgconn.PgError
+					if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+						_, err = tx.ExecContext(ctx, `
+						UPDATE metrics
+						SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
+							value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
+							updated_at = now()
+						WHERE agent_id=$1 AND id=$2 AND mtype=$3
+					`, agentID, m.ID, m.MType, d, v)
+						if err != nil {
+							return result, err
+						}
+						continue
+					}
+					return result, err
+				}
 			}
 		}
+		return result, nil
 	}
-	return nil
+	_, err = utils.WithRetry(ctx, f)
+	return err
 }
 
 func (p *PGStorage) GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
-	var v sql.NullFloat64
-	var d sql.NullInt64
-
-	row := p.DB.QueryRowContext(ctx, `
-		SELECT value, delta
-		FROM metrics
-		WHERE agent_id = $1 AND id = $2 AND mtype = $3
-		`, agentID, metricName, metricType)
-	if err = row.Scan(&v, &d); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, 0, fmt.Errorf("metric not found: agent_id=%s id=%s type=%s", agentID, metricName, metricType)
-		}
-		return 0, 0, err
+	type MetricResult struct {
+		value float64
+		delta int64
 	}
-
-	switch metricType {
-	case model.Counter:
-		if d.Valid {
-			return 0, d.Int64, nil
-		} else {
-			return 0, 0, fmt.Errorf("counter metric has no delta: agent_id=%s id=%s", agentID, metricName)
-		}
-
-	case model.Gauge:
-		if v.Valid {
-			return v.Float64, 0, nil
-		}
-		return 0, 0, fmt.Errorf("gauge metric has no value: agent_id=%s id=%s", agentID, metricName)
-
-	default:
-		return 0, 0, fmt.Errorf("unknown metric type: %s", metricType)
-	}
-}
-
-func (p *PGStorage) GetObjMetric(ctx context.Context, agentID string, metricType string, metricName string) (m *model.Metrics, err error) {
-	var id, mtype string
-	var v sql.NullFloat64
-	var d sql.NullInt64
-
-	row := p.DB.QueryRowContext(ctx, `
-		SELECT id, mtype, delta, value
-		FROM metrics
-		WHERE agent_id = $1 AND id = $2 AND mtype = $3
-		`, agentID, metricName, metricType)
-	if err = row.Scan(&id, &mtype, &d, &v); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("metric not found: agent_id=%s id=%s type=%s", agentID, metricName, metricType)
-		}
-		return nil, err
-	}
-	m = &model.Metrics{
-		ID:    id,
-		MType: mtype,
-	}
-	if d.Valid {
-		m.Delta = &(d.Int64)
-	}
-	if v.Valid {
-		m.Value = &(v.Float64)
-	}
-
-	return m, err
-}
-
-func (p *PGStorage) GetStore(ctx context.Context) (store map[string]*model.Metrics, err error) {
-	rows, err := p.DB.QueryContext(ctx, `
-		SELECT agent_id, id, mtype, delta, value
-		FROM metrics
-		ORDER BY agent_id, id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	store = make(map[string]*model.Metrics)
-	for rows.Next() {
-		var agentID, id, mtype string
+	f := func() (result MetricResult, err error) {
 		var v sql.NullFloat64
 		var d sql.NullInt64
 
-		if err = rows.Scan(&agentID, &id, &mtype, &d, &v); err != nil {
+		row := p.DB.QueryRowContext(ctx, `
+			SELECT value, delta
+			FROM metrics
+			WHERE agent_id = $1 AND id = $2 AND mtype = $3
+			`, agentID, metricName, metricType)
+		if err = row.Scan(&v, &d); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return result, fmt.Errorf("metric not found: agent_id=%s id=%s type=%s", agentID, metricName, metricType)
+			}
+			return result, err
+		}
+
+		switch metricType {
+		case model.Counter:
+			if d.Valid {
+				result.delta = d.Int64
+				return result, nil
+			} else {
+				return result, fmt.Errorf("counter metric has no delta: agent_id=%s id=%s", agentID, metricName)
+			}
+
+		case model.Gauge:
+			if v.Valid {
+				result.value = v.Float64
+				return result, nil
+			}
+			return result, fmt.Errorf("gauge metric has no value: agent_id=%s id=%s", agentID, metricName)
+
+		default:
+			return result, fmt.Errorf("unknown metric type: %s", metricType)
+		}
+	}
+	result, err := utils.WithRetry(ctx, f)
+	return result.value, result.delta, err
+}
+
+func (p *PGStorage) GetObjMetric(ctx context.Context, agentID string, metricType string, metricName string) (m *model.Metrics, err error) {
+	f := func() (m *model.Metrics, err error) {
+		var id, mtype string
+		var v sql.NullFloat64
+		var d sql.NullInt64
+		row := p.DB.QueryRowContext(ctx, `
+			SELECT id, mtype, delta, value
+			FROM metrics
+			WHERE agent_id = $1 AND id = $2 AND mtype = $3
+			`, agentID, metricName, metricType)
+		if err = row.Scan(&id, &mtype, &d, &v); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("metric not found: agent_id=%s id=%s type=%s", agentID, metricName, metricType)
+			}
 			return nil, err
 		}
-		metric := model.Metrics{
+		m = &model.Metrics{
 			ID:    id,
 			MType: mtype,
 		}
 		if d.Valid {
-			metric.Delta = &(d.Int64)
+			delta := d.Int64
+			m.Delta = &delta
 		}
 		if v.Valid {
-			metric.Value = &(v.Float64)
+			value := v.Float64
+			m.Value = &value
 		}
-		store[agentID+"_"+id] = &metric
+
+		return m, err
 	}
-	if err = rows.Err(); err != nil {
-		return nil, err
+	m, err = utils.WithRetry(ctx, f)
+	return m, err
+}
+
+func (p *PGStorage) GetStore(ctx context.Context) (store map[string]*model.Metrics, err error) {
+	f := func() (store map[string]*model.Metrics, err error) {
+		rows, err := p.DB.QueryContext(ctx, `
+			SELECT agent_id, id, mtype, delta, value
+			FROM metrics
+			ORDER BY agent_id, id`)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		store = make(map[string]*model.Metrics)
+		for rows.Next() {
+			var agentID, id, mtype string
+			var v sql.NullFloat64
+			var d sql.NullInt64
+
+			if err = rows.Scan(&agentID, &id, &mtype, &d, &v); err != nil {
+				return nil, err
+			}
+			metric := model.Metrics{
+				ID:    id,
+				MType: mtype,
+			}
+			if d.Valid {
+				delta := d.Int64
+				metric.Delta = &(delta)
+			}
+			if v.Valid {
+				value := v.Float64
+				metric.Value = &(value)
+			}
+			store[agentID+"_"+id] = &metric
+		}
+		if err = rows.Err(); err != nil {
+			return nil, err
+		}
+		return store, nil
 	}
-	return store, nil
+	store, err = utils.WithRetry(ctx, f)
+	return store, err
 }
