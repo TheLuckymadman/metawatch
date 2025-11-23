@@ -35,20 +35,20 @@ func WithRetry[T any](ctx context.Context, f func() (T, error)) (T, error) {
 			for i := 0; i < len(delays); i++ {
 				select {
 				case <-ctx.Done():
-					return dummy, fmt.Errorf("context failed: %w", ctx.Err())
+					return dummy, fmt.Errorf("context failed:%w", ctx.Err())
 				case <-time.After(time.Duration(delays[i]) * time.Second):
 					v, err = f()
 					if err == nil {
 						return v, nil
 					}
 					if !CheckRetriablePgError(err) {
-						return dummy, fmt.Errorf("failed due to an unretriable error: %w", err)
+						return dummy, fmt.Errorf("failed due to an unretriable error:%w", err)
 					}
 				}
 			}
-			return dummy, fmt.Errorf("max retry count %d exceeded: %w", len(delays), err)
+			return dummy, fmt.Errorf("max retry count %d exceeded:%w", len(delays), err)
 		}
-		return dummy, fmt.Errorf("failed due to an unretriable error: %w", err)
+		return dummy, fmt.Errorf("failed due to an unretriable error:%w", err)
 	}
 	return v, nil
 }

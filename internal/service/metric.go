@@ -23,20 +23,20 @@ func (s *Service) AddMetric(ctx context.Context, metricName string, metricValue 
 	case model.Counter:
 		value, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
-			return fmt.Errorf("can't parse metric value:\n%v", err.Error())
+			return fmt.Errorf("can't parse metric value:%w", err)
 		}
 		err = s.storage.AddMetric(ctx, agentIP, metricType, metricName, 0, value)
 		if err != nil {
-			return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+			return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 		}
 	case model.Gauge:
 		value, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
-			return fmt.Errorf("can't parse metric value:\n%v", err.Error())
+			return fmt.Errorf("can't parse metric value:%w", err)
 		}
 		err = s.storage.AddMetric(ctx, agentIP, metricType, metricName, value, 0)
 		if err != nil {
-			return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+			return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 		}
 	default:
 		return fmt.Errorf("invalid metric type")
@@ -65,7 +65,7 @@ func (s *Service) AddObjMetric(ctx context.Context, metric model.Metrics, agentI
 
 	err := s.storage.AddMetrics(ctx, agentIP, metrics)
 	if err != nil {
-		return fmt.Errorf("there was an error while adding metrics to the database:\n%v", err)
+		return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 	}
 	return nil
 }
@@ -94,7 +94,7 @@ func (s *Service) AddObjMetrics(ctx context.Context, metrics []model.Metrics, ag
 	}
 	err := s.storage.AddMetrics(ctx, agentIP, metrics)
 	if err != nil {
-		return fmt.Errorf("there was an error while adding metrics to the database:\n%w", err)
+		return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func (s *Service) GetMetric(ctx context.Context, metricName string, metricType s
 		{
 			_, delta, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
 			if err != nil {
-				return "", fmt.Errorf("there was an error while getting metric:\n%v", err)
+				return "", fmt.Errorf("there was an error while getting metric:%w", err)
 			}
 			result = fmt.Sprintf("%d", delta)
 		}
@@ -113,7 +113,7 @@ func (s *Service) GetMetric(ctx context.Context, metricName string, metricType s
 		{
 			value, _, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
 			if err != nil {
-				return "", fmt.Errorf("there was an error while getting metric:\n%v", err)
+				return "", fmt.Errorf("there was an error while getting metric:%w", err)
 			}
 			result = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
 		}
@@ -127,7 +127,7 @@ func (s *Service) GetObjMetric(ctx context.Context, metricReq model.Metrics, age
 	if metricReq.MType == model.Counter || metricReq.MType == model.Gauge {
 		metricResp, err = s.storage.GetObjMetric(ctx, agentIP, metricReq.MType, metricReq.ID)
 		if err != nil {
-			return nil, fmt.Errorf("there was an error while getting metric:\n%v", err)
+			return nil, fmt.Errorf("there was an error while getting metric:%w", err)
 		}
 	} else {
 		return nil, fmt.Errorf("invalid metric type")

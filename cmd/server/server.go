@@ -30,18 +30,26 @@ func run() error {
 	defer func() {
 		_ = logger.Sync()
 	}()
-
 	sugar = *logger.Sugar()
 
 	var s service.Storage
-	s = repository.NewFileStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore)
 	mode := "FileStorage"
 	if cfg.DatabseDSN != "" {
 		mode = "Database"
 		s, err = repository.NewPGDB(cfg.DatabseDSN, cfg.DBInitMode)
 		if err != nil {
 			//log.Fatalf("DB connection failed: %v", err)
-			return fmt.Errorf("DB connection failed: %w", err)
+			return fmt.Errorf("connect databse:%w", err)
+		}
+		defer func() {
+			if err := s.Close(); err != nil {
+				sugar.Errorf("close storage: %v", err)
+			}
+		}()
+	} else {
+		s, err = repository.NewFileStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore)
+		if err != nil {
+			return fmt.Errorf("create file storage:%w", err)
 		}
 		defer func() {
 			if err := s.Close(); err != nil {
@@ -107,7 +115,7 @@ func run() error {
 			return nil
 		}
 	case err := <-errCh:
-		return fmt.Errorf("server err: %w", err)
+		return fmt.Errorf("server:%w", err)
 	}
 }
 

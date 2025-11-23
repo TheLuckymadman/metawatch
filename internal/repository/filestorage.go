@@ -2,11 +2,12 @@ package repository
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"time"
-	"context"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
@@ -14,38 +15,40 @@ import (
 type FileStorage struct {
 	MemStorage
 	fileStoragePath string
-	storeInterval int
-	restore bool
-	stopChan chan struct{}
-	syncChan chan *model.Metrics
+	storeInterval   int
+	restore         bool
+	stopChan        chan struct{}
+	syncChan        chan *model.Metrics
 }
 
-func NewFileStorage(fileStoragePath string, storeInterval int, restore bool) *FileStorage {
+func NewFileStorage(fileStoragePath string, storeInterval int, restore bool) (*FileStorage, error) {
 	f := FileStorage{
-		MemStorage: MemStorage{Metrics: make(map[string]*model.Metrics)},
-		fileStoragePath: fileStoragePath, 
-		storeInterval: storeInterval, 
-		restore: restore,
-		stopChan: make(chan struct{}),
-		syncChan: make(chan *model.Metrics, 100),
+		MemStorage:      MemStorage{Metrics: make(map[string]*model.Metrics)},
+		fileStoragePath: fileStoragePath,
+		storeInterval:   storeInterval,
+		restore:         restore,
+		stopChan:        make(chan struct{}),
+		syncChan:        make(chan *model.Metrics, 100),
 	}
 	if f.restore {
-		f.loadFromFile()
+		if err := f.loadFromFile(); err != nil {
+			return nil, err
+		}
 	}
 	go f.fileSyncRunner()
-	
-	return &f
+
+	return &f, nil
 }
 
-func (f *FileStorage) loadFromFile() {
+func (f *FileStorage) loadFromFile() error {
 	file, err := os.Open(f.fileStoragePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("File %s not found, skipping restore", f.fileStoragePath)
-			return
+			return nil
 		}
-		log.Printf("Opening or creating file error: %v", err)
-		return
+		log.Printf("Opening file error: %v", err)
+		return fmt.Errorf("opening file error: %w", err)
 	}
 	defer file.Close()
 
@@ -53,21 +56,23 @@ func (f *FileStorage) loadFromFile() {
 	_, err = buf.ReadFrom(file)
 	if err != nil {
 		log.Printf("Reading file error: %v", err)
+		return fmt.Errorf("reading file error: %w", err)
 	}
 	err = json.Unmarshal(buf.Bytes(), &f.MemStorage.Metrics)
 	if err != nil {
 		log.Printf("Error unmarshalling data from the file: %v", err)
-		return
+		return fmt.Errorf("error unmarshalling data from the file: %w", err)
 	}
+	return nil
 }
 
 func (f *FileStorage) fileSyncRunner() {
 	if f.storeInterval == 0 {
 		for {
 			select {
-			case <- f.syncChan:
+			case <-f.syncChan:
 				f.saveToFile()
-			case <- f.stopChan:
+			case <-f.stopChan:
 				log.Println("Stop file sync runner")
 				return
 			}
@@ -77,9 +82,9 @@ func (f *FileStorage) fileSyncRunner() {
 		defer ticker.Stop()
 		for {
 			select {
-			case <- ticker.C:
+			case <-ticker.C:
 				f.saveToFile()
-			case <- f.stopChan:
+			case <-f.stopChan:
 				log.Println("Stop file sync runner")
 				return
 			}
@@ -94,6 +99,7 @@ func (f *FileStorage) saveToFile() {
 	file, err := os.OpenFile(f.fileStoragePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Printf("Opening or creating file error: %v", err)
+		return
 	}
 	defer file.Close()
 
@@ -113,8 +119,10 @@ func (f *FileStorage) saveToFile() {
 	}
 }
 
-func (f *FileStorage) Stop() {
+func (f *FileStorage) Close() error {
 	close(f.stopChan)
+	f.saveToFile()
+	return nil
 }
 
 func (f *FileStorage) AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error {
@@ -124,7 +132,7 @@ func (f *FileStorage) AddMetric(ctx context.Context, agentID string, metricType 
 	metric, ok := f.Metrics[key]
 	if !ok {
 		f.Metrics[key] = &model.Metrics{
-			ID: metricName,
+			ID:    metricName,
 			MType: metricType,
 		}
 		metric = f.Metrics[key]
@@ -142,19 +150,21 @@ func (f *FileStorage) AddMetric(ctx context.Context, agentID string, metricType 
 
 	// metric.Lock()
 	switch metricType {
-	case model.Counter: {
-		if metric.Delta == nil {
-			metric.Delta = new(int64)
+	case model.Counter:
+		{
+			if metric.Delta == nil {
+				metric.Delta = new(int64)
+			}
+			*metric.Delta += delta
+			metric.Value = nil
 		}
-		*metric.Delta += delta
-		metric.Value = nil
+
+	case model.Gauge:
+		{
+			metric.Delta = nil
+			metric.Value = &value
+		}
 	}
-	
-	case model.Gauge: {
-		metric.Delta = nil
-		metric.Value = &value
-	}
-	}
-	
+
 	return nil
 }

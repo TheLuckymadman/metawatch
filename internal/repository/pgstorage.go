@@ -90,20 +90,26 @@ func NewPGDB(dsn string, mode DBInitMode) (*PGStorage, error) {
 func (p *PGStorage) RunMigration(migrationsDir string, cmd MigrationCMD) error {
 	driver, err := postgres.WithInstance(p.DB, &postgres.Config{})
 	if err != nil {
-		return err
+		return fmt.Errorf("migrate: open driver: %w", err)
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://"+migrationsDir,
 		"postgres", driver)
 	if err != nil {
-		return err
+		return fmt.Errorf("migrate: new instance: %w", err)
 	}
 	switch cmd {
 	case UP:
 		err = m.Up()
+		if err != nil {
+			log.Printf("migrate up: %v", err)
+		}
 	case DOWN:
 		err = m.Down()
+		if err != nil {
+			return fmt.Errorf("migrate down: %w", err)
+		}
 	default:
 		return fmt.Errorf("wrong migrate cmd %d", cmd)
 	}
