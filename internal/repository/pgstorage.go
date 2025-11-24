@@ -11,8 +11,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
@@ -148,45 +146,18 @@ func (p *PGStorage) AddMetric(ctx context.Context, agentID string, metricType st
 			}
 		}()
 
-		res, err := tx.ExecContext(ctx, `UPDATE metrics 
-			SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4::bigint ELSE NULL END,
-				value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
-				updated_at = now()
-			WHERE agent_id=$1 AND id=$2 AND mtype=$3
-			`, agentID, metricName, metricType, delta, value)
-		if err != nil {
-			return result, err
-		}
-		rows, err := res.RowsAffected()
-		if err != nil {
-			return result, err
-		}
-		if rows == 0 {
-			_, err = tx.ExecContext(ctx, `
-			INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
+		_, err = tx.ExecContext(ctx, `INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
 			VALUES ($1,$2,$3,
 				CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
 				CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
 				now())
-				`, agentID, metricName, metricType, delta, value)
-			if err != nil {
-				var pgErr *pgconn.PgError
-				if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-					_, err = tx.ExecContext(ctx, `
-						UPDATE metrics
-						SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4::bigint ELSE NULL END,
-							value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
-							updated_at = now()
-						WHERE agent_id=$1 AND id=$2 AND mtype=$3
-					`, agentID, metricName, metricType, delta, value)
-					if err != nil {
-						return result, err
-					}
-					return result, nil
-				}
-				return result, err
-			}
-			return result, nil
+			ON CONFLICT (agent_id, id, mtype) DO UPDATE
+				SET delta = CASE WHEN $3='counter' THEN COALESCE(metrics.delta,0)::bigint + $4::bigint ELSE NULL END,
+				value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+				updated_at = now()
+			`, agentID, metricName, metricType, delta, value)
+		if err != nil {
+			return result, err
 		}
 		return result, nil
 	}
@@ -223,44 +194,18 @@ func (p *PGStorage) AddMetrics(ctx context.Context, agentID string, metrics []mo
 			} else {
 				v = nil
 			}
-			res, err := tx.ExecContext(ctx, `UPDATE metrics 
-			SET delta = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
-				value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
-				updated_at = now()
-			WHERE agent_id=$1 AND id=$2 AND mtype=$3
-			`, agentID, m.ID, m.MType, d, v)
-			if err != nil {
-				return result, err
-			}
-			rows, err := res.RowsAffected()
-			if err != nil {
-				return result, err
-			}
-			if rows == 0 {
-				_, err = tx.ExecContext(ctx, `
-			INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
+			_, err = tx.ExecContext(ctx, `INSERT INTO metrics (agent_id, id, mtype, delta, value, updated_at) 
 			VALUES ($1,$2,$3,
 				CASE WHEN $3='counter' THEN $4::bigint ELSE NULL END,
 				CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
 				now())
+			ON CONFLICT (agent_id, id, mtype) DO UPDATE
+				SET delta = CASE WHEN $3='counter' THEN COALESCE(metrics.delta,0)::bigint + $4::bigint ELSE NULL END,
+				value = CASE WHEN $3='gauge' THEN $5::double precision ELSE NULL END,
+				updated_at = now()
 				`, agentID, m.ID, m.MType, d, v)
-				if err != nil {
-					var pgErr *pgconn.PgError
-					if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-						_, err = tx.ExecContext(ctx, `
-						UPDATE metrics
-						SET delta      = CASE WHEN $3='counter' THEN COALESCE(delta,0)::bigint + $4 ELSE NULL END,
-							value      = CASE WHEN $3='gauge'   THEN $5::double precision               ELSE NULL END,
-							updated_at = now()
-						WHERE agent_id=$1 AND id=$2 AND mtype=$3
-					`, agentID, m.ID, m.MType, d, v)
-						if err != nil {
-							return result, err
-						}
-						continue
-					}
-					return result, err
-				}
+			if err != nil {
+				return result, err
 			}
 		}
 		return result, nil

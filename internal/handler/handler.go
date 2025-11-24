@@ -169,7 +169,7 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 		reqPath := regexp.MustCompile(`^/value/(\w+)/([\w\-.]+)$`)
 		matches := reqPath.FindStringSubmatch(r.URL.Path)
 		if len(matches) != 3 {
-			http.Error(w, "Invalid path format. Use /value/metrictype/metricname/values\n", http.StatusNotFound)
+			http.Error(w, "Invalid path format. Use /value/metrictype/metricname/value\n", http.StatusNotFound)
 			return
 		}
 		metricType := matches[1]
@@ -177,11 +177,19 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 
 		ctx := r.Context()
-		body, err := s.GetMetric(ctx, metricName, metricType, agentIP)
+		metricReq := model.Metrics{ID: metricName, MType: metricType}
+		metricResp, err := s.GetObjMetric(ctx, metricReq, agentIP)
 		if err != nil {
 			errStr := fmt.Sprintf("There was an error while getting the metric:\n%v", err)
 			http.Error(w, errStr, http.StatusNotFound)
 			return
+		}
+		var body string
+		switch metricType {
+		case model.Counter:
+			body = fmt.Sprintf("%d", *metricResp.Delta)
+		case model.Gauge:
+			body = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", *metricResp.Value), "0"), ".")
 		}
 
 		w.Header().Set("Content-Type", "text/plain")

@@ -39,7 +39,7 @@ func run() error {
 		s, err = repository.NewPGDB(cfg.DatabseDSN, cfg.DBInitMode)
 		if err != nil {
 			//log.Fatalf("DB connection failed: %v", err)
-			return fmt.Errorf("connect databse:%w", err)
+			return fmt.Errorf("connect database:%w", err)
 		}
 		defer func() {
 			if err := s.Close(); err != nil {

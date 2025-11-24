@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
@@ -97,30 +96,6 @@ func (s *Service) AddObjMetrics(ctx context.Context, metrics []model.Metrics, ag
 		return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 	}
 	return nil
-}
-
-func (s *Service) GetMetric(ctx context.Context, metricName string, metricType string, agentIP string) (result string, err error) {
-	switch metricType {
-	case model.Counter:
-		{
-			_, delta, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
-			if err != nil {
-				return "", fmt.Errorf("there was an error while getting metric:%w", err)
-			}
-			result = fmt.Sprintf("%d", delta)
-		}
-	case model.Gauge:
-		{
-			value, _, err := s.storage.GetMetric(ctx, agentIP, metricType, metricName)
-			if err != nil {
-				return "", fmt.Errorf("there was an error while getting metric:%w", err)
-			}
-			result = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
-		}
-	default:
-		return "", fmt.Errorf("invalid metric type")
-	}
-	return result, nil
 }
 
 func (s *Service) GetObjMetric(ctx context.Context, metricReq model.Metrics, agentIP string) (metricResp *model.Metrics, err error) {
