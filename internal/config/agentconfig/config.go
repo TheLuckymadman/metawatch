@@ -13,6 +13,8 @@ type Config struct {
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	BatchSize      int    `env:"BATCH_SIZE"`
+	Compress       bool   `env:"COMPRESS"`
+	Key            string `env:"KEY"`
 }
 
 func GetDefaultConfig() Config {
@@ -21,6 +23,8 @@ func GetDefaultConfig() Config {
 		PollInterval:   2,
 		ReportInterval: 10,
 		BatchSize:      50,
+		Compress:       true,
+		Key:            "",
 	}
 }
 
@@ -30,7 +34,7 @@ func Load() Config {
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "fetching metrics frequency")
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "sending metrics frequency")
 	flag.IntVar(&cfg.BatchSize, "b", cfg.BatchSize, "batch size")
-
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "secret key for hash generation")
 	flag.Parse()
 
 	err := env.Parse(&cfg)

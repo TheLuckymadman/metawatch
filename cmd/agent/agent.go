@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,8 +10,6 @@ import (
 
 	"github.com/TheLuckymadman/metawatch/internal/agent"
 	"github.com/TheLuckymadman/metawatch/internal/config/agentconfig"
-	"github.com/TheLuckymadman/metawatch/internal/model"
-	"github.com/TheLuckymadman/metawatch/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -25,7 +24,11 @@ func main() {
 		zap.Int("pollInterval", cfg.PollInterval),
 		zap.Int("reportInterval", cfg.ReportInterval),
 	)
-	lm := agent.LocalMetrics{M: make([]model.Metrics, 0, 28), PollCount: utils.Int64Ptr(0)}
+
+	client := &http.Client{}
+	sender := agent.NewJSONSender(client, cfg.ServerURL, cfg.Compress, cfg.Key)
+	lm := agent.NewLocalMetrics(sender)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -57,7 +60,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			default:
-				lm.SendMetrics(cfg.ServerURL, cfg.BatchSize)
+				lm.SendMetrics(cfg.BatchSize)
 				time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
 			}
 		}

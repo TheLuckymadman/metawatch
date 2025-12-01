@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"math/rand"
-	"net/http"
 	"runtime"
 	"sync"
 
@@ -12,13 +11,22 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/utils"
 )
 
-type LocalMetrics struct {
+type localMetrics struct {
 	M         []model.Metrics
 	PollCount *int64
+	Sender    Sender
 	sync.RWMutex
 }
 
-func (lm *LocalMetrics) GetMetrics() {
+func NewLocalMetrics(sender Sender) *localMetrics {
+	return &localMetrics{M: make([]model.Metrics, 0, 28), PollCount: utils.Int64Ptr(0), Sender: sender}
+}
+
+type Sender interface {
+	SendMetrics(metric []model.Metrics) error
+}
+
+func (lm *localMetrics) GetMetrics() {
 	var memstat runtime.MemStats
 	runtime.ReadMemStats(&memstat)
 	lm.Lock()
@@ -55,31 +63,26 @@ func (lm *LocalMetrics) GetMetrics() {
 	lm.Unlock()
 }
 
-func (lm *LocalMetrics) SendMetrics(s string, b int) {
-	client := &http.Client{}
-
-	sender := jsonSender{client, s, true}
-
+func (lm *localMetrics) SendMetrics(batchSz int) {
 	lm.Lock()
-	sz := b
 	if len(lm.M) == 0 {
 		lm.Unlock()
 		return
 	}
-	if len(lm.M) < b {
-		sz = len(lm.M)
+	if len(lm.M) < batchSz {
+		batchSz = len(lm.M)
 	}
-	copyMetrics := lm.M[:sz]
-	lm.M = lm.M[sz:]
+	copyMetrics := lm.M[:batchSz]
+	lm.M = lm.M[batchSz:]
 	lm.Unlock()
 
 	type result struct{}
 	f := func() (result, error) {
-		err := sender.SendMetrics(copyMetrics)
+		err := lm.Sender.SendMetrics(copyMetrics)
 		return result{}, err
 	}
 	_, err := utils.WithRetry(context.Background(), f)
-	
+
 	if err != nil {
 		lm.Lock()
 		log.Printf("%v", err)
@@ -91,7 +94,7 @@ func (lm *LocalMetrics) SendMetrics(s string, b int) {
 	}
 }
 
-func (lm *LocalMetrics) ReadMetrics() {
+func (lm *localMetrics) ReadMetrics() {
 	lm.RLock()
 	for k, v := range lm.M {
 		switch v.MType {
