@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -11,9 +12,34 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	
+
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
+
+func PingDB(s Service) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
+		ctx := r.Context()
+		if r.Method != http.MethodGet {
+			http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
+			return
+		}
+		err := s.PingDB(ctx)
+		if err != nil {
+			http.Error(w, "DB connection error", http.StatusInternalServerError)
+			return
+		}
+		body := "DB connection is OK"
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, err = io.WriteString(w, body)
+		if err != nil {
+			log.Printf("failed to write response body: %v", err)
+		}
+
+	})
+}
 
 func MetricSetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,25 +53,26 @@ func MetricSetterHandler(s Service) http.HandlerFunc {
 		// 	w.WriteHeader(http.StatusMethodNotAllowed)
 		// 	return
 		// }
-		
+
 		metricType := chi.URLParam(r, "type")
 		restPath := chi.URLParam(r, "*")
 		reqPath := regexp.MustCompile(`^(.+)/(.+)$`)
 		matches := reqPath.FindStringSubmatch(restPath)
 		if len(matches) < 3 {
-			http.Error(w, "invalid path format . Use: /update/metrictype/metricname/values", http.StatusNotFound)
+			http.Error(w, "Invalid path format. Use /update/metrictype/metricname/values", http.StatusNotFound)
 			return
 		}
 		metricName := matches[1]
 		metricValue := matches[2]
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
 
-		err := s.AddMetric(metricName, metricValue, metricType, agentIP)
+		ctx := r.Context()
+		err := s.AddMetric(ctx, metricName, metricValue, metricType, agentIP)
 		if err != nil {
-			http.Error(w, "invalid metric values\n", http.StatusBadRequest)
+			http.Error(w, "Invalid metric values\n", http.StatusBadRequest)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		var reply = struct {
@@ -54,7 +81,7 @@ func MetricSetterHandler(s Service) http.HandlerFunc {
 		body, err := json.Marshal(reply)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return 
+			return
 		}
 		if _, err := w.Write(body); err != nil {
 			log.Printf("failed to write response body: %v", err)
@@ -63,12 +90,11 @@ func MetricSetterHandler(s Service) http.HandlerFunc {
 }
 
 func JSONSetterHandler(s Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request){
+	return func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
-		
+
 		if r.Header.Get("Content-Type") != "application/json" {
 			http.Error(w, "Unsupported content type", http.StatusMethodNotAllowed)
-			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -76,17 +102,45 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 			return
 		}
 
-		var metric model.Metrics
-		jsonDecoder := json.NewDecoder(r.Body)
-		if err := jsonDecoder.Decode(&metric); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Body read failed", http.StatusBadRequest)
 			return
 		}
+		trimmed := bytes.TrimSpace(body)
+		if len(trimmed) == 0 {
+			http.Error(w, "No data in body", http.StatusBadRequest)
+			return
+		}
+
+		var metric model.Metrics
+		var metrics []model.Metrics
+		switch string(trimmed[0]) {
+		case `[`:
+			err := json.Unmarshal(trimmed, &metrics)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		case `{`:
+			err := json.Unmarshal(trimmed, &metric)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			metrics = append(metrics, metric)
+		default:
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
-		err := s.AddObjMetric(metric, agentIP)
+		ctx := r.Context()
+		err = s.AddObjMetrics(ctx, metrics, agentIP)
 		if err != nil {
+			log.Println(err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
-			return 
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -94,10 +148,10 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 		var reply = struct {
 			Status string `json:"status"`
 		}{Status: "ok"}
-		body, err := json.Marshal(reply)
+		body, err = json.Marshal(reply)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return 
+			return
 		}
 		if _, err := w.Write(body); err != nil {
 			log.Printf("failed to write response body: %v", err)
@@ -115,18 +169,27 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 		reqPath := regexp.MustCompile(`^/value/(\w+)/([\w\-.]+)$`)
 		matches := reqPath.FindStringSubmatch(r.URL.Path)
 		if len(matches) != 3 {
-			http.Error(w, "invalid path format. Use: /value/metrictype/metricname/values\n", http.StatusNotFound)
+			http.Error(w, "Invalid path format. Use /value/metrictype/metricname/value\n", http.StatusNotFound)
 			return
 		}
 		metricType := matches[1]
 		metricName := matches[2]
 		agentIP := strings.Split(r.RemoteAddr, ":")[0]
-		
-		body, err := s.GetMetric(metricName, metricType, agentIP)
+
+		ctx := r.Context()
+		metricReq := model.Metrics{ID: metricName, MType: metricType}
+		metricResp, err := s.GetObjMetric(ctx, metricReq, agentIP)
 		if err != nil {
-			errStr := fmt.Sprintf("There was a error while getting the metric:\n%v", err)
+			errStr := fmt.Sprintf("There was an error while getting the metric:\n%v", err)
 			http.Error(w, errStr, http.StatusNotFound)
 			return
+		}
+		var body string
+		switch metricType {
+		case model.Counter:
+			body = fmt.Sprintf("%d", *metricResp.Delta)
+		case model.Gauge:
+			body = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", *metricResp.Value), "0"), ".")
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
@@ -140,7 +203,7 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 func JSONGetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
-		
+
 		if r.Header.Get("Content-Type") != "application/json" {
 			http.Error(w, "Unsupported content type", http.StatusMethodNotAllowed)
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -155,18 +218,19 @@ func JSONGetterHandler(s Service) http.HandlerFunc {
 		var metricReq model.Metrics
 		jsonDecoder := json.NewDecoder(r.Body)
 		if err := jsonDecoder.Decode(&metricReq); err != nil {
-			log.Printf("Decoding json request failed with %v", err)
+			log.Printf("decoding json request failed with %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		metricResp, err := s.GetObjMetric(metricReq, agentIP)
+		ctx := r.Context()
+		metricResp, err := s.GetObjMetric(ctx, metricReq, agentIP)
 		if err != nil {
-			log.Printf("Getting object metrics failed with %v", err)
+			log.Printf("getting object metrics failed with %v", err)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		jsonEncoder := json.NewEncoder(w)
@@ -184,12 +248,13 @@ func MetricsListHandler(s Service) http.HandlerFunc {
 			http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 			return
 		}
-		
-		memStorage, metricIdx, err := s.ListMetric()
+
+		ctx := r.Context()
+		memStorage, metricIdx, err := s.ListMetric(ctx)
 		if err != nil {
-			errStr := fmt.Sprintf("There was a error while listing metrics:\n%v", err)
+			errStr := fmt.Sprintf("There was an error while listing metrics:\n%v", err)
 			http.Error(w, errStr, http.StatusInternalServerError)
-			return 
+			return
 		}
 
 		body := `<!DOCTYPE html>

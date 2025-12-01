@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"log"
 	"math/rand"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/utils"
 )
-
 
 type LocalMetrics struct {
 	M         []model.Metrics
@@ -55,25 +55,40 @@ func (lm *LocalMetrics) GetMetrics() {
 	lm.Unlock()
 }
 
-func (lm *LocalMetrics) SendMetrics(s string) {
+func (lm *LocalMetrics) SendMetrics(s string, b int) {
 	client := &http.Client{}
-	
+
 	sender := jsonSender{client, s, true}
 
-	lm.RLock()
-	copyMetrics := lm.M
-	var nonsentMetrics []model.Metrics
-	lm.RUnlock()
-	for i, m := range copyMetrics {
-		err := sender.SendMetric(m)
-		if err != nil {
-			nonsentMetrics = append(nonsentMetrics, copyMetrics[i])
-		}
-	}
 	lm.Lock()
-	lm.M = nil
-	lm.M = append(lm.M, nonsentMetrics...)
+	sz := b
+	if len(lm.M) == 0 {
+		lm.Unlock()
+		return
+	}
+	if len(lm.M) < b {
+		sz = len(lm.M)
+	}
+	copyMetrics := lm.M[:sz]
+	lm.M = lm.M[sz:]
 	lm.Unlock()
+
+	type result struct{}
+	f := func() (result, error) {
+		err := sender.SendMetrics(copyMetrics)
+		return result{}, err
+	}
+	_, err := utils.WithRetry(context.Background(), f)
+	
+	if err != nil {
+		lm.Lock()
+		log.Printf("%v", err)
+		newMetrics := make([]model.Metrics, 0, len(copyMetrics)+len(lm.M))
+		newMetrics = append(newMetrics, copyMetrics...)
+		newMetrics = append(newMetrics, lm.M...)
+		lm.M = newMetrics
+		lm.Unlock()
+	}
 }
 
 func (lm *LocalMetrics) ReadMetrics() {

@@ -1,0 +1,147 @@
+{
+	"127.0.0.1_Alloc": {
+		"id": "Alloc",
+		"type": "gauge",
+		"value": 1990864
+	},
+	"127.0.0.1_BuckHashSys": {
+		"id": "BuckHashSys",
+		"type": "gauge",
+		"value": 3404
+	},
+	"127.0.0.1_Frees": {
+		"id": "Frees",
+		"type": "gauge",
+		"value": 124700
+	},
+	"127.0.0.1_GCCPUFraction": {
+		"id": "GCCPUFraction",
+		"type": "gauge",
+		"value": 0.000005644968962499088
+	},
+	"127.0.0.1_GCSys": {
+		"id": "GCSys",
+		"type": "gauge",
+		"value": 2574096
+	},
+	"127.0.0.1_HeapAlloc": {
+		"id": "HeapAlloc",
+		"type": "gauge",
+		"value": 1990864
+	},
+	"127.0.0.1_HeapIdle": {
+		"id": "HeapIdle",
+		"type": "gauge",
+		"value": 4808704
+	},
+	"127.0.0.1_HeapInuse": {
+		"id": "HeapInuse",
+		"type": "gauge",
+		"value": 2924544
+	},
+	"127.0.0.1_HeapObjects": {
+		"id": "HeapObjects",
+		"type": "gauge",
+		"value": 2363
+	},
+	"127.0.0.1_HeapReleased": {
+		"id": "HeapReleased",
+		"type": "gauge",
+		"value": 2318336
+	},
+	"127.0.0.1_HeapSys": {
+		"id": "HeapSys",
+		"type": "gauge",
+		"value": 7733248
+	},
+	"127.0.0.1_LastGC": {
+		"id": "LastGC",
+		"type": "gauge",
+		"value": 1763903547637067800
+	},
+	"127.0.0.1_Lookups": {
+		"id": "Lookups",
+		"type": "gauge",
+		"value": 0
+	},
+	"127.0.0.1_MCacheInuse": {
+		"id": "MCacheInuse",
+		"type": "gauge",
+		"value": 19328
+	},
+	"127.0.0.1_MCacheSys": {
+		"id": "MCacheSys",
+		"type": "gauge",
+		"value": 31408
+	},
+	"127.0.0.1_MSpanInuse": {
+		"id": "MSpanInuse",
+		"type": "gauge",
+		"value": 86400
+	},
+	"127.0.0.1_MSpanSys": {
+		"id": "MSpanSys",
+		"type": "gauge",
+		"value": 97920
+	},
+	"127.0.0.1_Mallocs": {
+		"id": "Mallocs",
+		"type": "gauge",
+		"value": 127034
+	},
+	"127.0.0.1_NextGC": {
+		"id": "NextGC",
+		"type": "gauge",
+		"value": 4194304
+	},
+	"127.0.0.1_NumForcedGC": {
+		"id": "NumForcedGC",
+		"type": "gauge",
+		"value": 0
+	},
+	"127.0.0.1_NumGC": {
+		"id": "NumGC",
+		"type": "gauge",
+		"value": 9
+	},
+	"127.0.0.1_OtherSys": {
+		"id": "OtherSys",
+		"type": "gauge",
+		"value": 1184388
+	},
+	"127.0.0.1_PauseTotalNs": {
+		"id": "PauseTotalNs",
+		"type": "gauge",
+		"value": 1405004
+	},
+	"127.0.0.1_PollCount": {
+		"id": "PollCount",
+		"type": "counter",
+		"delta": 8385
+	},
+	"127.0.0.1_RandomValue": {
+		"id": "RandomValue",
+		"type": "gauge",
+		"value": 0.9073387357815074
+	},
+	"127.0.0.1_StackInuse": {
+		"id": "StackInuse",
+		"type": "gauge",
+		"value": 655360
+	},
+	"127.0.0.1_StackSys": {
+		"id": "StackSys",
+		"type": "gauge",
+		"value": 655360
+	},
+	"127.0.0.1_Sys": {
+		"id": "Sys",
+		"type": "gauge",
+		"value": 12279824
+	},
+	"127.0.0.1_TotalAlloc": {
+		"id": "TotalAlloc",
+		"type": "gauge",
+		"value": 24675768
+	}
+}

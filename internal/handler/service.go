@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
 type Service interface {
-	AddMetric(metricName string, metricValue string, metricType string, agentIP string) error
-	AddObjMetric(metric model.Metrics, agentIP string) error
-	GetMetric(metricName string, metricType string, agentIP string) (result string, err error)
-	GetObjMetric(metricReq model.Metrics, agentIP string) (metricResp *model.Metrics, err error)
-	ListMetric() (map[string]*model.Metrics, []string, error)
+	AddMetric(ctx context.Context, metricName string, metricValue string, metricType string, agentIP string) error
+	AddObjMetric(ctx context.Context, metric model.Metrics, agentIP string) error
+	AddObjMetrics(ctx context.Context, metrics []model.Metrics, agentIP string) error
+	GetObjMetric(ctx context.Context, metricReq model.Metrics, agentIP string) (metricResp *model.Metrics, err error)
+	ListMetric(ctx context.Context) (map[string]*model.Metrics, []string, error)
+	PingDB(ctx context.Context) error
 }

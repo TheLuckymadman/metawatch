@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -12,7 +13,7 @@ type MemStorage struct {
 	sync.RWMutex
 }
 
-func (m *MemStorage) GetStore() map[string]*model.Metrics {
+func (m *MemStorage) GetStore(ctx context.Context) (map[string]*model.Metrics, error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -20,7 +21,7 @@ func (m *MemStorage) GetStore() map[string]*model.Metrics {
 	for k, v := range m.Metrics {
 		copyMemStorage[k] = v
 	}
-	return copyMemStorage
+	return copyMemStorage, nil
 
 }
 
@@ -30,41 +31,67 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (m *MemStorage) AddMetric(agentID string, metricType string, metricName string, value float64, delta int64) error {
-	key := agentID + "_" + metricName
-
-	m.Lock()
-	metric, ok := m.Metrics[key]
-	if !ok {
-		m.Metrics[key] = &model.Metrics{
-			ID: metricName,
-			MType: metricType,
-		}
-		metric = m.Metrics[key]
-	}
-	m.Unlock()
-	// defer metric.Unlock()
-
-	// metric.Lock()
-	switch metricType {
-	case model.Counter: {
-		if metric.Delta == nil {
-			metric.Delta = new(int64)
-		}
-		*metric.Delta += delta
-		metric.Value = nil
-	}
-	
-	case model.Gauge: {
-		metric.Delta = nil
-		metric.Value = &value
-	}
-	}
-	
+func (m *MemStorage) Close() error {
 	return nil
 }
 
-func (m *MemStorage) GetMetric(agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
+func (m *MemStorage) AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error {
+	metric := model.Metrics{
+		ID:    metricName,
+		MType: metricType,
+	}
+	switch metricType {
+	case model.Counter:
+		//d := delta
+		metric.Delta = &delta
+	case model.Gauge:
+		//v := value
+		metric.Value = &value
+	}
+	metrics := []model.Metrics{metric}
+	return m.AddMetrics(ctx, agentID, metrics)
+}
+
+func (m *MemStorage) AddMetrics(ctx context.Context, agentID string, metrics []model.Metrics) error {
+	m.Lock()
+	defer m.Unlock()
+	for _, recMetric := range metrics {
+		key := agentID + "_" + recMetric.ID
+
+		metric, ok := m.Metrics[key]
+		if !ok {
+			newMetric := recMetric
+			m.Metrics[key] = &newMetric
+			continue
+		}
+
+		switch recMetric.MType {
+		case model.Counter:
+			{
+				if metric.Delta == nil {
+					metric.Delta = new(int64)
+				}
+				if recMetric.Delta != nil {
+
+					*metric.Delta += *recMetric.Delta
+					metric.Value = nil
+				}
+			}
+		case model.Gauge:
+			{
+				metric.Delta = nil
+				newValues := *recMetric.Value
+				metric.Value = &newValues
+			}
+			m.Metrics[key] = metric
+		}
+		// defer metric.Unlock()
+		// metric.Lock()
+	}
+	return nil
+}
+
+func (m *MemStorage) GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error) {
 	key := agentID + "_" + metricName
 
 	m.RLock()
@@ -88,7 +115,7 @@ func (m *MemStorage) GetMetric(agentID string, metricType string, metricName str
 	return 0, 0, fmt.Errorf("metric %q has no value", key)
 }
 
-func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName string) (*model.Metrics, error) {
+func (m *MemStorage) GetObjMetric(ctx context.Context, agentID string, metricType string, metricName string) (*model.Metrics, error) {
 	key := agentID + "_" + metricName
 
 	m.RLock()
@@ -98,5 +125,9 @@ func (m *MemStorage) GetObjMetric(agentID string, metricType string, metricName 
 	if !ok {
 		return nil, fmt.Errorf("metric not found, key: %q", key)
 	}
-	return  agentMetrics, nil
+	return agentMetrics, nil
+}
+
+func (m *MemStorage) PingDB(ctx context.Context) error {
+	return nil
 }
