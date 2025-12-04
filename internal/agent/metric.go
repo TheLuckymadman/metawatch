@@ -2,10 +2,15 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/utils"
@@ -105,4 +110,121 @@ func (lm *localMetrics) ReadMetrics() {
 		}
 	}
 	lm.RUnlock()
+}
+
+func (lm *localMetrics) StartBatching(
+	ctx context.Context,
+	sendInterval int,
+	batchSz int,
+	metricsQueue chan<- []model.Metrics,
+	failedMetrics <-chan []model.Metrics,
+) {
+	ticker := time.NewTicker(time.Duration(sendInterval) * time.Second)
+	defer ticker.Stop()
+
+	send := func() {
+		lm.Lock()
+		n := batchSz
+		if len(lm.M) == 0 {
+			lm.Unlock()
+			return
+		}
+		if len(lm.M) < n {
+			n = len(lm.M)
+		}
+		var batch = make([]model.Metrics, n)
+		copy(batch, lm.M[:n])
+		lm.M = lm.M[n:]
+		lm.Unlock()
+
+		select {
+		case metricsQueue <- batch:
+		case <-ctx.Done():
+			return
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			close(metricsQueue)
+			return
+		case fMetrics, ok := <-failedMetrics:
+			if !ok {
+				failedMetrics = nil
+				continue
+			}
+			lm.Lock()
+			newMetrics := make([]model.Metrics, 0, len(fMetrics)+len(lm.M))
+			newMetrics = append(newMetrics, fMetrics...)
+			newMetrics = append(newMetrics, lm.M...)
+			lm.M = newMetrics
+			lm.Unlock()
+		case <-ticker.C:
+			send()
+		}
+	}
+}
+
+func (lm *localMetrics) MetricsSender(
+	id int,
+	ctx context.Context,
+	metricsQueue <-chan []model.Metrics,
+	failedMetrics chan<- []model.Metrics,
+) {
+	log.Printf("worker %d starts", id)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case metrics, ok := <-metricsQueue:
+			if !ok {
+				return
+			}
+			log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
+			type result struct{}
+			f := func() (result, error) {
+				err := lm.Sender.SendMetrics(metrics)
+				return result{}, err
+			}
+			_, err := utils.WithRetry(ctx, f)
+			if err != nil {
+				select {
+				case failedMetrics <- metrics:
+				case <-ctx.Done():
+					return
+				}
+
+			}
+		}
+	}
+}
+
+func (lm *localMetrics) GetExtraMetrics(ctx context.Context, pollInterval int) {
+	ticker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			v, err := mem.VirtualMemory()
+			if err != nil {
+				continue
+			}
+			cpuUtil, err := cpu.Percent(0, false)
+			if err != nil {
+				continue
+			}
+			cpuCnt, err := cpu.Counts(true)
+			if err != nil {
+				continue
+			}
+			lm.Lock()
+			lm.M = append(lm.M, model.Metrics{ID: "TotalMemory", MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(float64(v.Total))})
+			lm.M = append(lm.M, model.Metrics{ID: "FreeMemory", MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(float64(v.Free))})
+			lm.M = append(lm.M, model.Metrics{ID: fmt.Sprintf("CPUutilization%d", cpuCnt), MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(cpuUtil[0])})
+			lm.Unlock()
+		}
+	}
 }
