@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -49,60 +50,21 @@ func (s *simpleSender) SendMetric(metric model.Metrics) error {
 		log.Printf("sending metric (ID: %s, Type: %s) failed with: %v", metric.ID, metric.MType, err)
 		return fmt.Errorf("sending metric (ID: %s, Type: %s) failed with: %w", metric.ID, metric.MType, err)
 	}
-	log.Printf("sending metric on %v successfully: %v\n", url, response)
 	response.Body.Close()
-	return nil
-}
-
-func (j *jsonSender) SendMetric(metric model.Metrics) error {
-	var url = fmt.Sprintf("%s/update/", j.address)
-	metricJSON, err := json.Marshal(&metric)
-	if err != nil {
-		log.Printf("marshalling metric data failed with error: %v", err)
-		return fmt.Errorf("marshalling metric data failed with error: %w", err)
-	}
-	var body bytes.Buffer
-	if j.compress {
-
-		gzipBody := gzip.NewWriter(&body)
-		_, err = gzipBody.Write(metricJSON)
-
-		if err != nil {
-			return fmt.Errorf("gzip write failed: %w", err)
-		}
-
-		if err := gzipBody.Close(); err != nil {
-			return fmt.Errorf("gzip close failed: %w", err)
-		}
-	} else {
-		body.Write(metricJSON)
-	}
-
-	request, err := http.NewRequest(http.MethodPost, url, &body)
-	if err != nil {
-		log.Printf("creating request failed: %v", err)
-		return fmt.Errorf("creating request failed: %w", err)
-	}
-	if j.compress {
-		request.Header.Set("Content-Encoding", "gzip")
-	}
-	request.Header.Set("Content-Type", "application/json")
-	if j.key != "" {
-		request.Header.Set("HashSHA256", generateHMAC(j.key, metricJSON))
-
-	}
-	response, err := j.client.Do(request)
-	if err != nil {
-		log.Printf("sending metric (ID: %s, Type: %s) failed with: %v", metric.ID, metric.MType, err)
-		return fmt.Errorf("sending metric (ID: %s, Type: %s) failed with: %w", metric.ID, metric.MType, err)
-	}
-	defer response.Body.Close()
-	log.Printf("sending metric on %v with status: %v\n", url, response.Status)
+	log.Printf("sending metric on %v successfully: %v\n", url, response)
 
 	return nil
 }
 
-func (j *jsonSender) SendMetrics(metrics []model.Metrics) error {
+func (j *jsonSender) SendMetric(ctx context.Context, metric model.Metrics) error {
+	return j.sendData(ctx, []model.Metrics{metric})
+}
+
+func (j *jsonSender) SendMetrics(ctx context.Context, metrics []model.Metrics) error {
+	return j.sendData(ctx, metrics)
+}
+
+func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) error {
 	var url = fmt.Sprintf("%s/update/", j.address)
 	metricsJSON, err := json.Marshal(&metrics)
 	if err != nil {
@@ -126,7 +88,7 @@ func (j *jsonSender) SendMetrics(metrics []model.Metrics) error {
 		body.Write(metricsJSON)
 	}
 
-	request, err := http.NewRequest(http.MethodPost, url, &body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &body)
 	if err != nil {
 		log.Printf("creating request failed: %v", err)
 		return fmt.Errorf("creating request failed: %w", err)

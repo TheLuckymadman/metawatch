@@ -16,6 +16,7 @@ type Config struct {
 	Compress       bool   `env:"COMPRESS"`
 	Key            string `env:"KEY"`
 	RateLimit      int    `env:"RATE_LIMIT"`
+	LogMetrics     bool   `env:"LOG_METRICS"`
 }
 
 func GetDefaultConfig() Config {
@@ -27,6 +28,7 @@ func GetDefaultConfig() Config {
 		Compress:       true,
 		Key:            "",
 		RateLimit:      3,
+		LogMetrics:     false,
 	}
 }
 
@@ -38,6 +40,7 @@ func Load() Config {
 	flag.IntVar(&cfg.BatchSize, "b", cfg.BatchSize, "batch size")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "secret key for hash generation")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "max cucrurrent requests to server")
+	flag.BoolVar(&cfg.LogMetrics, "lm", cfg.LogMetrics, "show metrics in the agent's log")
 	flag.Parse()
 
 	err := env.Parse(&cfg)

@@ -28,7 +28,7 @@ func NewLocalMetrics(sender Sender) *localMetrics {
 }
 
 type Sender interface {
-	SendMetrics(metric []model.Metrics) error
+	SendMetrics(ctx context.Context, metric []model.Metrics) error
 }
 
 func (lm *localMetrics) GetMetrics() {
@@ -68,7 +68,7 @@ func (lm *localMetrics) GetMetrics() {
 	lm.Unlock()
 }
 
-func (lm *localMetrics) SendMetrics(batchSz int) {
+func (lm *localMetrics) SendMetrics(ctx context.Context, batchSz int) {
 	lm.Lock()
 	if len(lm.M) == 0 {
 		lm.Unlock()
@@ -83,10 +83,10 @@ func (lm *localMetrics) SendMetrics(batchSz int) {
 
 	type result struct{}
 	f := func() (result, error) {
-		err := lm.Sender.SendMetrics(copyMetrics)
+		err := lm.Sender.SendMetrics(ctx, copyMetrics)
 		return result{}, err
 	}
-	_, err := utils.WithRetry(context.Background(), f)
+	_, err := utils.WithRetry(ctx, f)
 
 	if err != nil {
 		lm.Lock()
@@ -183,7 +183,7 @@ func (lm *localMetrics) MetricsSender(
 			log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
 			type result struct{}
 			f := func() (result, error) {
-				err := lm.Sender.SendMetrics(metrics)
+				err := lm.Sender.SendMetrics(ctx, metrics)
 				return result{}, err
 			}
 			_, err := utils.WithRetry(ctx, f)

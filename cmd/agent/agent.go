@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
@@ -33,40 +36,63 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	var wg sync.WaitGroup
 	metricsQueue := make(chan []model.Metrics, cfg.RateLimit)
 	failedMetrics := make(chan []model.Metrics, cfg.BatchSize)
 
 	for i := 0; i < cfg.RateLimit; i++ {
-		go lm.MetricsSender(i, ctx, metricsQueue, failedMetrics)
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			lm.MetricsSender(id, ctx, metricsQueue, failedMetrics)
+		}(i)
 	}
-	go lm.StartBatching(ctx, cfg.ReportInterval, cfg.BatchSize, metricsQueue, failedMetrics)
-	go lm.GetExtraMetrics(ctx, cfg.PollInterval)
-
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+		lm.StartBatching(ctx, cfg.ReportInterval, cfg.BatchSize, metricsQueue, failedMetrics)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		lm.GetExtraMetrics(ctx, cfg.PollInterval)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			default:
+			case <-ticker.C:
 				lm.GetMetrics()
-				time.Sleep(time.Duration(cfg.PollInterval) * time.Second)
 			}
 		}
 	}()
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case <-ctx.Done():
-	// 			return
-	// 		default:
-	// 			lm.ReadMetrics()
-	// 			time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
-	// 		}
-	// 	}
-	// }()
+
+	if cfg.LogMetrics {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					lm.ReadMetrics()
+				}
+			}
+		}()
+	}
 
 	<-ctx.Done()
-	close(failedMetrics)
-	//log.Printf("Agent is shutting down gracefully")
+	wg.Wait()
+	fmt.Println("Goroutines:", runtime.NumGoroutine())
 	logger.Info("Agent is shutting down gracefully")
 }
