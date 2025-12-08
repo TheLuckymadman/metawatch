@@ -2,23 +2,36 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
-	"net/http"
 	"runtime"
 	"sync"
+	"time"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/utils"
 )
 
-type LocalMetrics struct {
+type localMetrics struct {
 	M         []model.Metrics
 	PollCount *int64
+	Sender    Sender
 	sync.RWMutex
 }
 
-func (lm *LocalMetrics) GetMetrics() {
+func NewLocalMetrics(sender Sender) *localMetrics {
+	return &localMetrics{M: make([]model.Metrics, 0, 28), PollCount: utils.Int64Ptr(0), Sender: sender}
+}
+
+type Sender interface {
+	SendMetrics(ctx context.Context, metric []model.Metrics) error
+}
+
+func (lm *localMetrics) GetMetrics() {
 	var memstat runtime.MemStats
 	runtime.ReadMemStats(&memstat)
 	lm.Lock()
@@ -55,31 +68,26 @@ func (lm *LocalMetrics) GetMetrics() {
 	lm.Unlock()
 }
 
-func (lm *LocalMetrics) SendMetrics(s string, b int) {
-	client := &http.Client{}
-
-	sender := jsonSender{client, s, true}
-
+func (lm *localMetrics) SendMetrics(ctx context.Context, batchSz int) {
 	lm.Lock()
-	sz := b
 	if len(lm.M) == 0 {
 		lm.Unlock()
 		return
 	}
-	if len(lm.M) < b {
-		sz = len(lm.M)
+	if len(lm.M) < batchSz {
+		batchSz = len(lm.M)
 	}
-	copyMetrics := lm.M[:sz]
-	lm.M = lm.M[sz:]
+	copyMetrics := lm.M[:batchSz]
+	lm.M = lm.M[batchSz:]
 	lm.Unlock()
 
 	type result struct{}
 	f := func() (result, error) {
-		err := sender.SendMetrics(copyMetrics)
+		err := lm.Sender.SendMetrics(ctx, copyMetrics)
 		return result{}, err
 	}
-	_, err := utils.WithRetry(context.Background(), f)
-	
+	_, err := utils.WithRetry(ctx, f)
+
 	if err != nil {
 		lm.Lock()
 		log.Printf("%v", err)
@@ -91,7 +99,7 @@ func (lm *LocalMetrics) SendMetrics(s string, b int) {
 	}
 }
 
-func (lm *LocalMetrics) ReadMetrics() {
+func (lm *localMetrics) ReadMetrics() {
 	lm.RLock()
 	for k, v := range lm.M {
 		switch v.MType {
@@ -102,4 +110,121 @@ func (lm *LocalMetrics) ReadMetrics() {
 		}
 	}
 	lm.RUnlock()
+}
+
+func (lm *localMetrics) StartBatching(
+	ctx context.Context,
+	sendInterval int,
+	batchSz int,
+	metricsQueue chan<- []model.Metrics,
+	failedMetrics <-chan []model.Metrics,
+) {
+	ticker := time.NewTicker(time.Duration(sendInterval) * time.Second)
+	defer ticker.Stop()
+
+	send := func() {
+		lm.Lock()
+		n := batchSz
+		if len(lm.M) == 0 {
+			lm.Unlock()
+			return
+		}
+		if len(lm.M) < n {
+			n = len(lm.M)
+		}
+		var batch = make([]model.Metrics, n)
+		copy(batch, lm.M[:n])
+		lm.M = lm.M[n:]
+		lm.Unlock()
+
+		select {
+		case metricsQueue <- batch:
+		case <-ctx.Done():
+			return
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			close(metricsQueue)
+			return
+		case fMetrics, ok := <-failedMetrics:
+			if !ok {
+				failedMetrics = nil
+				continue
+			}
+			lm.Lock()
+			newMetrics := make([]model.Metrics, 0, len(fMetrics)+len(lm.M))
+			newMetrics = append(newMetrics, fMetrics...)
+			newMetrics = append(newMetrics, lm.M...)
+			lm.M = newMetrics
+			lm.Unlock()
+		case <-ticker.C:
+			send()
+		}
+	}
+}
+
+func (lm *localMetrics) MetricsSender(
+	id int,
+	ctx context.Context,
+	metricsQueue <-chan []model.Metrics,
+	failedMetrics chan<- []model.Metrics,
+) {
+	log.Printf("worker %d starts", id)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case metrics, ok := <-metricsQueue:
+			if !ok {
+				return
+			}
+			log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
+			type result struct{}
+			f := func() (result, error) {
+				err := lm.Sender.SendMetrics(ctx, metrics)
+				return result{}, err
+			}
+			_, err := utils.WithRetry(ctx, f)
+			if err != nil {
+				select {
+				case failedMetrics <- metrics:
+				case <-ctx.Done():
+					return
+				}
+
+			}
+		}
+	}
+}
+
+func (lm *localMetrics) GetExtraMetrics(ctx context.Context, pollInterval int) {
+	ticker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			v, err := mem.VirtualMemory()
+			if err != nil {
+				continue
+			}
+			cpuUtil, err := cpu.Percent(0, false)
+			if err != nil {
+				continue
+			}
+			cpuCnt, err := cpu.Counts(true)
+			if err != nil {
+				continue
+			}
+			lm.Lock()
+			lm.M = append(lm.M, model.Metrics{ID: "TotalMemory", MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(float64(v.Total))})
+			lm.M = append(lm.M, model.Metrics{ID: "FreeMemory", MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(float64(v.Free))})
+			lm.M = append(lm.M, model.Metrics{ID: fmt.Sprintf("CPUutilization%d", cpuCnt), MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(cpuUtil[0])})
+			lm.Unlock()
+		}
+	}
 }

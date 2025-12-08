@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/TheLuckymadman/metawatch/internal/agent"
 	"github.com/TheLuckymadman/metawatch/internal/config/agentconfig"
 	"github.com/TheLuckymadman/metawatch/internal/model"
-	"github.com/TheLuckymadman/metawatch/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -25,45 +28,71 @@ func main() {
 		zap.Int("pollInterval", cfg.PollInterval),
 		zap.Int("reportInterval", cfg.ReportInterval),
 	)
-	lm := agent.LocalMetrics{M: make([]model.Metrics, 0, 28), PollCount: utils.Int64Ptr(0)}
+
+	client := &http.Client{}
+	sender := agent.NewJSONSender(client, cfg.ServerURL, cfg.Compress, cfg.Key)
+	lm := agent.NewLocalMetrics(sender)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	var wg sync.WaitGroup
+	metricsQueue := make(chan []model.Metrics, cfg.RateLimit)
+	failedMetrics := make(chan []model.Metrics, cfg.BatchSize)
+
+	for i := 0; i < cfg.RateLimit; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			lm.MetricsSender(id, ctx, metricsQueue, failedMetrics)
+		}(i)
+	}
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+		lm.StartBatching(ctx, cfg.ReportInterval, cfg.BatchSize, metricsQueue, failedMetrics)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		lm.GetExtraMetrics(ctx, cfg.PollInterval)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			default:
+			case <-ticker.C:
 				lm.GetMetrics()
-				time.Sleep(time.Duration(cfg.PollInterval) * time.Second)
-			}
-		}
-	}()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				lm.ReadMetrics()
-				time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
-			}
-		}
-	}()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				lm.SendMetrics(cfg.ServerURL, cfg.BatchSize)
-				time.Sleep(time.Duration(cfg.ReportInterval) * time.Second)
 			}
 		}
 	}()
 
+	if cfg.LogMetrics {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					lm.ReadMetrics()
+				}
+			}
+		}()
+	}
+
 	<-ctx.Done()
-	//log.Printf("Agent is shutting down gracefully")
+	wg.Wait()
+	fmt.Println("Goroutines:", runtime.NumGoroutine())
 	logger.Info("Agent is shutting down gracefully")
 }

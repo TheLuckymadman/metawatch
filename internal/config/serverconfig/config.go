@@ -17,6 +17,7 @@ type Config struct {
 	Restore         bool                  `env:"RESTORE"`
 	DatabseDSN      string                `env:"DATABASE_DSN"`
 	DBInitMode      repository.DBInitMode `env:"DB_INIT_MODE"`
+	Key             string                `env:"KEY"`
 }
 
 func GetDefaultConfig() *Config {
@@ -25,6 +26,7 @@ func GetDefaultConfig() *Config {
 		StoreInterval:   300,
 		FileStoragePath: "metrics.txt",
 		Restore:         false,
+		Key:            "",
 	}
 }
 
@@ -41,6 +43,7 @@ func Load() *Config {
 	flag.BoolVar(&(cfg.Restore), "r", cfg.Restore, "Do we need to restore metrics from the file during the start?")
 	flag.StringVar(&cfg.DatabseDSN, "d", cfg.DatabseDSN, "DSN connectoin string")
 	flag.StringVar(&dbInitMode, "m", "internal", "DB init mode, use external, internal, reset")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "secret key for hash generation")
 	flag.Parse()
 
 	switch dbInitMode {
