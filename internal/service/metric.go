@@ -10,11 +10,28 @@ import (
 )
 
 type Service struct {
-	storage Storage
+	storage  Storage
+	register map[string]Observer
 }
 
 func NewService(s Storage) *Service {
-	return &Service{s}
+	return &Service{s, make(map[string]Observer)}
+}
+
+func (s *Service) Register(o Observer) {
+	srvID := o.GetID()
+	fmt.Printf("register %s as a subscriber in Service\n", srvID)
+	s.register[srvID] = o
+}
+
+func (s *Service) Deregister(o Observer) {
+	delete(s.register, o.GetID())
+}
+
+func (s *Service) Notify(ctx context.Context, metrics []model.Metrics, agentIP string) {
+	for _, o := range s.register {
+		o.Update(ctx, metrics, agentIP)
+	}
 }
 
 func (s *Service) AddMetric(ctx context.Context, metricName string, metricValue string, metricType string, agentIP string) error {
@@ -28,6 +45,8 @@ func (s *Service) AddMetric(ctx context.Context, metricName string, metricValue 
 		if err != nil {
 			return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 		}
+		m := model.Metrics{ID: metricName, MType: model.Counter, Delta: &value}
+		s.Notify(ctx, []model.Metrics{m}, agentIP)
 	case model.Gauge:
 		value, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
@@ -37,6 +56,8 @@ func (s *Service) AddMetric(ctx context.Context, metricName string, metricValue 
 		if err != nil {
 			return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 		}
+		m := model.Metrics{ID: metricName, MType: model.Gauge, Value: &value}
+		s.Notify(ctx, []model.Metrics{m}, agentIP)
 	default:
 		return fmt.Errorf("invalid metric type")
 	}
@@ -66,6 +87,7 @@ func (s *Service) AddObjMetric(ctx context.Context, metric model.Metrics, agentI
 	if err != nil {
 		return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 	}
+	s.Notify(ctx, metrics, agentIP)
 	return nil
 }
 
@@ -95,6 +117,7 @@ func (s *Service) AddObjMetrics(ctx context.Context, metrics []model.Metrics, ag
 	if err != nil {
 		return fmt.Errorf("there was an error while adding metrics to the database:%w", err)
 	}
+	s.Notify(ctx, metrics, agentIP)
 	return nil
 }
 

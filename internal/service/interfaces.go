@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	
+
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
@@ -14,4 +14,14 @@ type Storage interface {
 	GetStore(ctx context.Context) (map[string]*model.Metrics, error)
 	PingDB(ctx context.Context) error
 	Close() error
+}
+
+type Observer interface {
+	Update(ctx context.Context, metrics []model.Metrics, agentIP string) error
+	GetID() string
+}
+
+type Audit interface {
+	Update(ctx context.Context, metrics []model.Metrics, agentIP string) error
+	GetID() string
 }

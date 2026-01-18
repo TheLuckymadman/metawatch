@@ -18,6 +18,8 @@ type Config struct {
 	DatabseDSN      string                `env:"DATABASE_DSN"`
 	DBInitMode      repository.DBInitMode `env:"DB_INIT_MODE"`
 	Key             string                `env:"KEY"`
+	AuditFile       string                `env:"AUDIT_FILE"`
+	AuditURL        string                `env:"AUDIT_URL"`
 }
 
 func GetDefaultConfig() *Config {
@@ -26,7 +28,9 @@ func GetDefaultConfig() *Config {
 		StoreInterval:   300,
 		FileStoragePath: "metrics.txt",
 		Restore:         false,
-		Key:            "",
+		Key:             "",
+		AuditFile:       "",
+		AuditURL:        "",
 	}
 }
 
@@ -37,13 +41,15 @@ func Load() *Config {
 	}
 
 	var dbInitMode string
-	flag.StringVar(&(cfg.ServerURL), "a", cfg.ServerURL, "Local listening interface in the format servername:port")
-	flag.IntVar(&(cfg.StoreInterval), "i", cfg.StoreInterval, "The save to a file interval. If the value equals 0, it will enable a sync mode")
-	flag.StringVar(&(cfg.FileStoragePath), "f", cfg.FileStoragePath, "The path to the file for saving metrics")
-	flag.BoolVar(&(cfg.Restore), "r", cfg.Restore, "Do we need to restore metrics from the file during the start?")
+	flag.StringVar(&cfg.ServerURL, "a", cfg.ServerURL, "Local listening interface in the format servername:port")
+	flag.IntVar(&cfg.StoreInterval, "i", cfg.StoreInterval, "The save to a file interval. If the value equals 0, it will enable a sync mode")
+	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "The path to the file for saving metrics")
+	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "Do we need to restore metrics from the file during the start?")
 	flag.StringVar(&cfg.DatabseDSN, "d", cfg.DatabseDSN, "DSN connectoin string")
 	flag.StringVar(&dbInitMode, "m", "internal", "DB init mode, use external, internal, reset")
-	flag.StringVar(&cfg.Key, "k", cfg.Key, "secret key for hash generation")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "Secret key for hash generation")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit server url")
 	flag.Parse()
 
 	switch dbInitMode {
