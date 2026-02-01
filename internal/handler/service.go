@@ -6,6 +6,7 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
+// Service interface is used to call methods of the metric service
 type Service interface {
 	AddMetric(ctx context.Context, metricName string, metricValue string, metricType string, agentIP string) error
 	AddObjMetric(ctx context.Context, metric model.Metrics, agentIP string) error

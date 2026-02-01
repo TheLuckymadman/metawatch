@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
@@ -74,7 +76,7 @@ func run() error {
 	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
 	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Post("/updates/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key), handler.HashWrapper(cfg.Key)))
+	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Get("/ping", handler.MiddlewareConveyor(handler.PingDB(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
@@ -130,6 +132,14 @@ func run() error {
 }
 
 func main() {
+
+	go func() {
+		log.Println("pprof listening on localhost:6060")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Printf("pprof server error: %v", err)
+		}
+	}()
+
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
