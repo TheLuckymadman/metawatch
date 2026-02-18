@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 
@@ -20,6 +21,10 @@ type simpleSender struct {
 	address string
 }
 
+func NewSimpleSender(client *http.Client, address string) *simpleSender {
+	return &simpleSender{client: client, address: address}
+}
+
 type jsonSender struct {
 	client   *http.Client
 	address  string
@@ -27,7 +32,7 @@ type jsonSender struct {
 	key      string
 }
 
-func NewJSONSender(client *http.Client, address string, compress bool, key string) Sender {
+func NewJSONSender(client *http.Client, address string, compress bool, key string) *jsonSender {
 	return &jsonSender{client, address, compress, key}
 }
 
@@ -50,8 +55,23 @@ func (s *simpleSender) SendMetric(metric model.Metrics) error {
 		log.Printf("sending metric (ID: %s, Type: %s) failed with: %v", metric.ID, metric.MType, err)
 		return fmt.Errorf("sending metric (ID: %s, Type: %s) failed with: %w", metric.ID, metric.MType, err)
 	}
-	response.Body.Close()
-	log.Printf("sending metric on %v successfully: %v\n", url, response)
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Printf("read response body: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		msg := fmt.Sprintf(
+			"sending metric (ID: %s, Type: %s) failed with status code: %d\nwith body: %s",
+			metric.ID,
+			metric.MType,
+			response.StatusCode,
+			string(body),
+		)
+		log.Println(msg)
+		return fmt.Errorf("%s", msg)
+	}
+	log.Printf("sending metric to %v with the status: %v\nwith body: %s", url, response.Status, body)
 
 	return nil
 }

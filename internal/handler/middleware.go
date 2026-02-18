@@ -1,3 +1,4 @@
+// Middlewares.
 package handler
 
 import (
@@ -11,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -38,6 +40,13 @@ type (
 		buf           bytes.Buffer
 	}
 )
+
+var gzipPool = sync.Pool{
+	New: func() any {
+		w, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
+		return w
+	},
+}
 
 func NewResponseWriteHash(w http.ResponseWriter) ResponseWriteHash {
 	return ResponseWriteHash{realRespWrite: w, header: make(http.Header), status: http.StatusOK}
@@ -99,12 +108,18 @@ func CompressWrapper(h http.HandlerFunc) http.HandlerFunc {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			log.Printf("compressing is requested")
 
-			gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to create gzip writer: %v", err), http.StatusInternalServerError)
-				return
-			}
-			defer gz.Close()
+			// gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+			// if err != nil {
+			// 	http.Error(w, fmt.Sprintf("failed to create gzip writer: %v", err), http.StatusInternalServerError)
+			// 	return
+			// }
+			// defer gz.Close()
+			gz := gzipPool.Get().(*gzip.Writer)
+			gz.Reset(w)
+			defer func() {
+				gz.Close()
+				gzipPool.Put(gz)
+			}()
 
 			rwc := ResponseWriterCompressor{w, gz, false}
 			h(&rwc, r)

@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/TheLuckymadman/metawatch/internal/agent"
 	"github.com/TheLuckymadman/metawatch/internal/config/agentconfig"
 	"github.com/TheLuckymadman/metawatch/internal/model"
@@ -90,6 +92,8 @@ func main() {
 			}
 		}()
 	}
+
+	// http.ListenAndServe("127.0.0.1:9090", nil)
 
 	<-ctx.Done()
 	wg.Wait()

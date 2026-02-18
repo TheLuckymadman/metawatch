@@ -35,7 +35,11 @@ func NewFileStorage(fileStoragePath string, storeInterval int, restore bool) (*F
 			return nil, err
 		}
 	}
-	go f.fileSyncRunner()
+	go func() {
+		if err := f.fileSyncRunner(); err != nil {
+			log.Printf("file sync runner error: %v", err)
+		}
+	}()
 
 	return &f, nil
 }
@@ -66,15 +70,18 @@ func (f *FileStorage) loadFromFile() error {
 	return nil
 }
 
-func (f *FileStorage) fileSyncRunner() {
+func (f *FileStorage) fileSyncRunner() error {
 	if f.storeInterval == 0 {
 		for {
 			select {
 			case <-f.syncChan:
-				f.saveToFile()
+				err := f.saveToFile()
+				if err != nil {
+					return err
+				}
 			case <-f.stopChan:
 				log.Println("Stop file sync runner")
-				return
+				return nil
 			}
 		}
 	} else {
@@ -83,23 +90,26 @@ func (f *FileStorage) fileSyncRunner() {
 		for {
 			select {
 			case <-ticker.C:
-				f.saveToFile()
+				err := f.saveToFile()
+				if err != nil {
+					return err
+				}
 			case <-f.stopChan:
 				log.Println("Stop file sync runner")
-				return
+				return nil
 			}
 		}
 	}
 }
 
-func (f *FileStorage) saveToFile() {
+func (f *FileStorage) saveToFile() error {
 	var m []byte
 	var err error
 
 	file, err := os.OpenFile(f.fileStoragePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Printf("Opening or creating file error: %v", err)
-		return
+		return err
 	}
 	defer file.Close()
 
@@ -110,13 +120,14 @@ func (f *FileStorage) saveToFile() {
 	m, err = json.MarshalIndent(memStorage, "", "	")
 	if err != nil {
 		log.Printf("Error marshaling JSON: %v", err)
-		return
+		return err
 	}
 
 	if _, err := file.Write(m); err != nil {
 		log.Printf("Error marshaling JSON: %v", err)
-		return
+		return err
 	}
+	return nil
 }
 
 func (f *FileStorage) Close() error {

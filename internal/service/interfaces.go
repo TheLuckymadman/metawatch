@@ -6,6 +6,7 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
+// Storage interface is used to call methods of the metric storage(repository)
 type Storage interface {
 	AddMetric(ctx context.Context, agentID string, metricType string, metricName string, value float64, delta int64) error
 	GetMetric(ctx context.Context, agentID string, metricType string, metricName string) (value float64, delta int64, err error)
@@ -16,11 +17,13 @@ type Storage interface {
 	Close() error
 }
 
+// Observer interface is used to call methods of types which subscribed to the metric service
 type Observer interface {
 	Update(ctx context.Context, metrics []model.Metrics, agentIP string) error
 	GetID() string
 }
 
+// Audit interface is used to call methods of types which implement it
 type Audit interface {
 	Update(ctx context.Context, metrics []model.Metrics, agentIP string) error
 	GetID() string

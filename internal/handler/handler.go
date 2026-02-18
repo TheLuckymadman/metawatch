@@ -1,3 +1,4 @@
+// Handlers. 
 package handler
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
+// PingDB is used to check a database by calling the PingDB method of service.
 func PingDB(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
@@ -41,6 +43,7 @@ func PingDB(s Service) http.HandlerFunc {
 	})
 }
 
+// MetricSetterHandler sets a metric by passing it to the AddMetric method of service.
 func MetricSetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
@@ -89,6 +92,7 @@ func MetricSetterHandler(s Service) http.HandlerFunc {
 	})
 }
 
+// JSONSetterHandler sets a metric or a list of metrics represented as JSON by passing them to the AddObjMetrics method of service.
 func JSONSetterHandler(s Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
@@ -159,6 +163,7 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 	}
 }
 
+// MetricGetterHandler returns a metric from the GetObjMetric method of service.
 func MetricGetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
@@ -169,7 +174,7 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 		reqPath := regexp.MustCompile(`^/value/(\w+)/([\w\-.]+)$`)
 		matches := reqPath.FindStringSubmatch(r.URL.Path)
 		if len(matches) != 3 {
-			http.Error(w, "Invalid path format. Use /value/metrictype/metricname/value\n", http.StatusNotFound)
+			http.Error(w, "Invalid path format. Use /value/metrictype/metricname\n", http.StatusNotFound)
 			return
 		}
 		metricType := matches[1]
@@ -200,6 +205,7 @@ func MetricGetterHandler(s Service) http.HandlerFunc {
 	})
 }
 
+// JSONGetterHandler returns metrics in form of JSONfrom the GetObjMetric method of service.
 func JSONGetterHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
@@ -241,6 +247,7 @@ func JSONGetterHandler(s Service) http.HandlerFunc {
 	})
 }
 
+// MetricsListHandler returns metrics in form of htlm page from the ListMetric method of service.
 func MetricsListHandler(s Service) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request on %v, from %v\n", r.URL.Path, r.Host)
