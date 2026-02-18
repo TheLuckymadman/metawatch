@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 	"github.com/TheLuckymadman/metawatch/internal/handler"
@@ -23,7 +24,11 @@ import (
 	"github.com/TheLuckymadman/metawatch/internal/service"
 )
 
-func run() error {
+var buildVersion string
+var buildDate string
+var buildCommit string
+
+func run(stopCtx context.Context) error {
 	cfg := serverconfig.Load()
 	var sugar zap.SugaredLogger
 	logger, err := zap.NewDevelopment()
@@ -35,18 +40,32 @@ func run() error {
 	}()
 	sugar = *logger.Sugar()
 
+	if buildVersion == "" {
+		buildVersion = "N/A"
+	}
+	if buildDate == "" {
+		buildDate = "N/A"
+	}
+	if buildCommit == "" {
+		buildCommit = "N/A"
+	}
+
+	sugar.Info("Build version: ", buildVersion)
+	sugar.Info("Build date: ", buildDate)
+	sugar.Info("Build commit: ", buildCommit)
+
 	var s service.Storage
 	mode := "FileStorage"
-	if cfg.DatabseDSN != "" {
+	if cfg.DatabaseDSN != "" {
 		mode = "Database"
-		s, err = repository.NewPGDB(cfg.DatabseDSN, cfg.DBInitMode)
+		s, err = repository.NewPGDB(cfg.DatabaseDSN, cfg.DBInitMode)
 		if err != nil {
 			//log.Fatalf("DB connection failed: %v", err)
 			return fmt.Errorf("connect database:%w", err)
 		}
 		defer func() {
-			if err := s.Close(); err != nil {
-				sugar.Errorf("close storage: %v", err)
+			if serr := s.Close(); serr != nil {
+				sugar.Errorf("close storage: %v", serr)
 			}
 		}()
 	} else {
@@ -63,11 +82,19 @@ func run() error {
 
 	srv := service.NewService(s)
 	if cfg.AuditFile != "" {
-		srv.Register(service.NewAudit(model.AuditToFile, model.AuditMsg{}, cfg.AuditFile, ""))
+		a, err := service.NewAudit(model.AuditToFile, model.AuditMsg{}, cfg.AuditFile, "")
+		if err != nil {
+			return fmt.Errorf("%w", err)
+		}
+		srv.Register(a)
 		sugar.Infow("Audit enabled", "type", "file", "file path", cfg.AuditFile)
 	}
 	if cfg.AuditURL != "" {
-		srv.Register(service.NewAudit(model.AuditToServer, model.AuditMsg{}, "", cfg.AuditURL))
+		a, err := service.NewAudit(model.AuditToServer, model.AuditMsg{}, "", cfg.AuditURL)
+		if err != nil {
+			return fmt.Errorf("%w", err)
+		}
+		srv.Register(a)
 		sugar.Infow("Audit enabled", "type", "server", "url", cfg.AuditURL)
 	}
 
@@ -110,9 +137,6 @@ func run() error {
 		}
 	}()
 
-	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	select {
 	case <-stopCtx.Done():
 		{
@@ -132,15 +156,38 @@ func run() error {
 }
 
 func main() {
+	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	g, ctx := errgroup.WithContext(stopCtx)
 
-	go func() {
+	pprofsvr := http.Server{
+		Addr: "localhost:6060",
+	}
+
+	g.Go(func() error {
 		log.Println("pprof listening on localhost:6060")
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
-			log.Printf("pprof server error: %v", err)
-		}
-	}()
+		return pprofsvr.ListenAndServe()
+	})
 
-	if err := run(); err != nil {
+	g.Go(func() error {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		err := pprofsvr.Shutdown(shutCtx)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := run(ctx); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
 		log.Fatal(err)
 	}
 }

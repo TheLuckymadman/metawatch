@@ -15,7 +15,7 @@ type Config struct {
 	StoreInterval   int                   `env:"STORE_INTERVAL"`
 	FileStoragePath string                `env:"FILE_STORAGE_PATH"`
 	Restore         bool                  `env:"RESTORE"`
-	DatabseDSN      string                `env:"DATABASE_DSN"`
+	DatabaseDSN      string                `env:"DATABASE_DSN"`
 	DBInitMode      repository.DBInitMode `env:"DB_INIT_MODE"`
 	Key             string                `env:"KEY"`
 	AuditFile       string                `env:"AUDIT_FILE"`
@@ -45,7 +45,7 @@ func Load() *Config {
 	flag.IntVar(&cfg.StoreInterval, "i", cfg.StoreInterval, "The save to a file interval. If the value equals 0, it will enable a sync mode")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "The path to the file for saving metrics")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "Do we need to restore metrics from the file during the start?")
-	flag.StringVar(&cfg.DatabseDSN, "d", cfg.DatabseDSN, "DSN connectoin string")
+	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "DSN connectoin string")
 	flag.StringVar(&dbInitMode, "m", "internal", "DB init mode, use external, internal, reset")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Secret key for hash generation")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Audit file path")
