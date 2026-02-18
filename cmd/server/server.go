@@ -16,6 +16,7 @@ import (
 
 	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 	"github.com/TheLuckymadman/metawatch/internal/handler"
+	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
 	"github.com/TheLuckymadman/metawatch/internal/service"
 )
@@ -59,6 +60,15 @@ func run() error {
 	}
 
 	srv := service.NewService(s)
+	if cfg.AuditFile != "" {
+		srv.Register(service.NewAudit(model.AuditToFile, model.AuditMsg{}, cfg.AuditFile, ""))
+		sugar.Infow("Audit enabled", "type", "file", "file path", cfg.AuditFile)
+	}
+	if cfg.AuditURL != "" {
+		srv.Register(service.NewAudit(model.AuditToServer, model.AuditMsg{}, "", cfg.AuditURL))
+		sugar.Infow("Audit enabled", "type", "server", "url", cfg.AuditURL)
+	}
+
 	r := chi.NewRouter()
 	//r.Use(middleware.RedirectSlashes)
 	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
