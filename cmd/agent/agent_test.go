@@ -11,7 +11,7 @@ import (
 
 func TestGetMetrics(t *testing.T) {
 	client := &http.Client{}
-	sender := agent.NewJSONSender(client, "127.0.0.1:8080", false, "")
+	sender := agent.NewJSONSender(client, "127.0.0.1:8080", false, "", "")
 	lm := agent.NewLocalMetrics(sender)
 
 	lm.GetMetrics()
@@ -38,7 +38,7 @@ func TestGetMetrics(t *testing.T) {
 
 func TestSendMetrics(t *testing.T) {
 	client := &http.Client{}
-	sender := agent.NewJSONSender(client, "127.0.0.1:8080", false, "")
+	sender := agent.NewJSONSender(client, "127.0.0.1:8080", false, "", "")
 	lm := agent.NewLocalMetrics(sender)
 	lm.M = []model.Metrics{
 		{

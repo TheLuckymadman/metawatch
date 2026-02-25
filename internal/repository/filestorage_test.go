@@ -16,7 +16,7 @@ func TestNewFileStorage(t *testing.T) {
 	tests := []struct {
 		name            string
 		fileStoragePath string
-		storeInterval   int
+		storeInterval   time.Duration
 		restore         bool
 		wantErr         bool
 	}{
@@ -70,7 +70,7 @@ func TestFileStorage_AddMetric(t *testing.T) {
 	tests := []struct {
 		name            string
 		fileStoragePath string
-		storeInterval   int
+		storeInterval   time.Duration
 		restore         bool
 		agentID         string
 		metricType      string
@@ -82,7 +82,7 @@ func TestFileStorage_AddMetric(t *testing.T) {
 		{
 			name:            "add metric to the file",
 			fileStoragePath: "metrics_test.txt",
-			storeInterval:   0,
+			storeInterval:   time.Duration(0),
 			restore:         false,
 			agentID:         "127.0.0.1_cpu_test",
 			metricType:      model.Counter,

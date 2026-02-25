@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/TheLuckymadman/metawatch/internal/model"
@@ -15,13 +16,14 @@ import (
 type FileStorage struct {
 	MemStorage
 	fileStoragePath string
-	storeInterval   int
+	storeInterval   time.Duration
 	restore         bool
 	stopChan        chan struct{}
 	syncChan        chan *model.Metrics
+	wg              *sync.WaitGroup
 }
 
-func NewFileStorage(fileStoragePath string, storeInterval int, restore bool) (*FileStorage, error) {
+func NewFileStorage(fileStoragePath string, storeInterval time.Duration, restore bool) (*FileStorage, error) {
 	f := FileStorage{
 		MemStorage:      MemStorage{Metrics: make(map[string]*model.Metrics)},
 		fileStoragePath: fileStoragePath,
@@ -29,13 +31,16 @@ func NewFileStorage(fileStoragePath string, storeInterval int, restore bool) (*F
 		restore:         restore,
 		stopChan:        make(chan struct{}),
 		syncChan:        make(chan *model.Metrics, 100),
+		wg:              &sync.WaitGroup{},
 	}
 	if f.restore {
 		if err := f.loadFromFile(); err != nil {
 			return nil, err
 		}
 	}
+	f.wg.Add(1)
 	go func() {
+		defer f.wg.Done()
 		if err := f.fileSyncRunner(); err != nil {
 			log.Printf("file sync runner error: %v", err)
 		}
@@ -85,7 +90,7 @@ func (f *FileStorage) fileSyncRunner() error {
 			}
 		}
 	} else {
-		ticker := time.NewTicker(time.Duration(f.storeInterval) * time.Second)
+		ticker := time.NewTicker(f.storeInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -132,6 +137,7 @@ func (f *FileStorage) saveToFile() error {
 
 func (f *FileStorage) Close() error {
 	close(f.stopChan)
+	f.wg.Wait()
 	f.saveToFile()
 	return nil
 }
@@ -151,6 +157,14 @@ func (f *FileStorage) AddMetric(ctx context.Context, agentID string, metricType 
 	f.Unlock()
 
 	if f.storeInterval == 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-f.stopChan:
+			return fmt.Errorf("drop data because of a stop signal happens")
+		default:
+		}
+
 		select {
 		case f.syncChan <- metric:
 		default:

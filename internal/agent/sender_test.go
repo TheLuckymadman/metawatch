@@ -140,7 +140,7 @@ func TestSendJSONMetric(t *testing.T) {
 	defer server.Close()
 
 	client := server.Client()
-	sender := NewJSONSender(client, server.URL, false, "")
+	sender := NewJSONSender(client, server.URL, false, "", "")
 
 	t.Log("test SendMetric")
 	for _, m := range metrics {

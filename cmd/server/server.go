@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
+	"github.com/TheLuckymadman/metawatch/internal/crypto"
 	"github.com/TheLuckymadman/metawatch/internal/handler"
 	"github.com/TheLuckymadman/metawatch/internal/model"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
@@ -69,7 +71,7 @@ func run(stopCtx context.Context) error {
 			}
 		}()
 	} else {
-		s, err = repository.NewFileStorage(cfg.FileStoragePath, cfg.StoreInterval, cfg.Restore)
+		s, err = repository.NewFileStorage(cfg.FileStoragePath, time.Duration(cfg.StoreInterval), cfg.Restore)
 		if err != nil {
 			return fmt.Errorf("create file storage:%w", err)
 		}
@@ -98,17 +100,22 @@ func run(stopCtx context.Context) error {
 		sugar.Infow("Audit enabled", "type", "server", "url", cfg.AuditURL)
 	}
 
+	var privKey *rsa.PrivateKey
+	if cfg.CryptoKey != "" {
+		privKey, err = crypto.ReadPrivKey(cfg.CryptoKey)
+		if err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
 	r := chi.NewRouter()
-	//r.Use(middleware.RedirectSlashes)
 	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
-	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Post("/updates/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
+	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.DecryptWrapper(privKey), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
+	r.Post("/updates/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.DecryptWrapper(privKey), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
+	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(srv), handler.LoggerWrapper(sugar), handler.DecryptWrapper(privKey), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
 	r.Get("/ping", handler.MiddlewareConveyor(handler.PingDB(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
-
-	//log.Printf("Start server on %v", a)
 
 	server := &http.Server{
 		Addr:              cfg.ServerURL,
@@ -127,6 +134,12 @@ func run(stopCtx context.Context) error {
 		mode,
 		"db init mode",
 		cfg.DBInitMode,
+		"StoreInterval",
+		time.Duration(cfg.StoreInterval).Seconds(),
+		"FileStoragePath",
+		cfg.FileStoragePath,
+		"Restore",
+		cfg.Restore,
 	)
 
 	errCh := make(chan error, 1)

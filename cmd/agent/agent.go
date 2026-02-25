@@ -31,8 +31,8 @@ func main() {
 	//log.Printf("Start agent with the following params:\nserverUrl: %s, pollInterval: %d, reportInterval: %d", cfg.ServerURL, cfg.PollInterval, cfg.ReportInterval)
 	logger.Info("Start agent with the following params",
 		zap.String("serverUrl", cfg.ServerURL),
-		zap.Int("pollInterval", cfg.PollInterval),
-		zap.Int("reportInterval", cfg.ReportInterval),
+		zap.Duration("pollInterval", time.Duration(cfg.PollInterval)),
+		zap.Duration("reportInterval", time.Duration(cfg.ReportInterval)),
 		zap.String("Build version", buildVersion),
 		zap.String("Build version", buildDate),
 		zap.String("Build version", buildCommit),
@@ -49,7 +49,7 @@ func main() {
 	}
 
 	client := &http.Client{}
-	sender := agent.NewJSONSender(client, cfg.ServerURL, cfg.Compress, cfg.Key)
+	sender := agent.NewJSONSender(client, cfg.ServerURL, cfg.Compress, cfg.Key, cfg.CryptoKey)
 	lm := agent.NewLocalMetrics(sender)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -68,20 +68,23 @@ func main() {
 	}
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		lm.StartBatching(ctx, cfg.ReportInterval, cfg.BatchSize, metricsQueue, failedMetrics)
+		defer func() {
+			close(metricsQueue)
+			wg.Done()
+		}() 
+		lm.StartBatching(ctx, time.Duration(cfg.ReportInterval), cfg.BatchSize, metricsQueue, failedMetrics)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		lm.GetExtraMetrics(ctx, cfg.PollInterval)
+		lm.GetExtraMetrics(ctx, time.Duration(cfg.PollInterval))
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ticker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+		ticker := time.NewTicker(time.Duration(cfg.PollInterval))
 		defer ticker.Stop()
 		for {
 			select {
@@ -97,7 +100,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ticker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+			ticker := time.NewTicker(time.Duration(cfg.ReportInterval))
 			defer ticker.Stop()
 			for {
 				select {

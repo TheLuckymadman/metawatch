@@ -114,15 +114,15 @@ func (lm *localMetrics) ReadMetrics() {
 
 func (lm *localMetrics) StartBatching(
 	ctx context.Context,
-	sendInterval int,
+	sendInterval time.Duration,
 	batchSz int,
 	metricsQueue chan<- []model.Metrics,
 	failedMetrics <-chan []model.Metrics,
 ) {
-	ticker := time.NewTicker(time.Duration(sendInterval) * time.Second)
+	ticker := time.NewTicker(sendInterval)
 	defer ticker.Stop()
 
-	send := func() {
+	send := func(isFlushed bool) {
 		lm.Lock()
 		n := batchSz
 		if len(lm.M) == 0 {
@@ -137,22 +137,25 @@ func (lm *localMetrics) StartBatching(
 		lm.M = lm.M[n:]
 		lm.Unlock()
 
-		select {
-		case metricsQueue <- batch:
-		case <-ctx.Done():
+		if isFlushed {
+			metricsQueue <- batch
 			return
 		}
+		metricsQueue <- batch
 	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			close(metricsQueue)
+			send(true)
 			return
 		case fMetrics, ok := <-failedMetrics:
 			if !ok {
+				log.Printf("StartBatching: failed to read from failedMetrics chan")
 				failedMetrics = nil
 				continue
 			}
+			log.Printf("StartBatching: revert back to the store %d metrics, that wasn't sent correctly", len(fMetrics))
 			lm.Lock()
 			newMetrics := make([]model.Metrics, 0, len(fMetrics)+len(lm.M))
 			newMetrics = append(newMetrics, fMetrics...)
@@ -160,7 +163,7 @@ func (lm *localMetrics) StartBatching(
 			lm.M = newMetrics
 			lm.Unlock()
 		case <-ticker.C:
-			send()
+			send(false)
 		}
 	}
 }
@@ -172,35 +175,31 @@ func (lm *localMetrics) MetricsSender(
 	failedMetrics chan<- []model.Metrics,
 ) {
 	log.Printf("worker %d starts", id)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case metrics, ok := <-metricsQueue:
-			if !ok {
-				return
-			}
-			log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
-			type result struct{}
-			f := func() (result, error) {
-				err := lm.Sender.SendMetrics(ctx, metrics)
-				return result{}, err
-			}
-			_, err := utils.WithRetry(ctx, f)
-			if err != nil {
-				select {
-				case failedMetrics <- metrics:
-				case <-ctx.Done():
-					return
-				}
 
+	for metrics := range metricsQueue {
+		log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
+		batchCtx, stop := context.WithTimeout(context.Background(), time.Second*10)
+
+		type result struct{}
+		f := func() (result, error) {
+			err := lm.Sender.SendMetrics(batchCtx, metrics)
+			return result{}, err
+		}
+		_, err := utils.WithRetry(batchCtx, f)
+		stop()
+		if err != nil {
+			select {
+			case failedMetrics <- metrics:
+				log.Printf("MetricsSender: failed to send metrics: %v", err)
+			default:
+				log.Printf("MetricsSender: failedMetrics chan is full")
 			}
 		}
 	}
 }
 
-func (lm *localMetrics) GetExtraMetrics(ctx context.Context, pollInterval int) {
-	ticker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+func (lm *localMetrics) GetExtraMetrics(ctx context.Context, pollInterval time.Duration) {
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {
