@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 )
 
@@ -15,7 +16,7 @@ func ReadCert(certPath string) (*x509.Certificate, error) {
 
 	certPemBlock, _ := pem.Decode(certBytes)
 	if certPemBlock == nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot decode pem certificate")
 	}
 
 	cert, err := x509.ParseCertificate(certPemBlock.Bytes)
@@ -33,7 +34,7 @@ func ReadPrivKey(keyPath string) (*rsa.PrivateKey, error) {
 
 	keyPemBlock, _ := pem.Decode(keyBytes)
 	if keyPemBlock == nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot decode pem private key")
 	}
 
 	privKey, err := x509.ParsePKCS1PrivateKey(keyPemBlock.Bytes)

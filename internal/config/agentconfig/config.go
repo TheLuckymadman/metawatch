@@ -73,7 +73,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "secret key for hash generation")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "max cucrurrent requests to server")
 	flag.BoolVar(&cfg.LogMetrics, "lm", cfg.LogMetrics, "show metrics in the agent's log")
-	flag.StringVar(&cfg.CryptoKey, "s", cfg.CryptoKey, "certificate path")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "certificate path")
 	flag.StringVar(&cfg.Config, "config", cfg.Config, "json config file path")
 	flag.StringVar(&cfg.Config, "c", cfg.Config, "alias for -config")
 	flag.Parse()

@@ -27,17 +27,6 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	cfg := agentconfig.Load()
-	//log.Printf("Start agent with the following params:\nserverUrl: %s, pollInterval: %d, reportInterval: %d", cfg.ServerURL, cfg.PollInterval, cfg.ReportInterval)
-	logger.Info("Start agent with the following params",
-		zap.String("serverUrl", cfg.ServerURL),
-		zap.Duration("pollInterval", time.Duration(cfg.PollInterval)),
-		zap.Duration("reportInterval", time.Duration(cfg.ReportInterval)),
-		zap.String("Build version", buildVersion),
-		zap.String("Build version", buildDate),
-		zap.String("Build version", buildCommit),
-	)
-
 	if buildVersion == "" {
 		buildVersion = "N/A"
 	}
@@ -47,6 +36,17 @@ func main() {
 	if buildCommit == "" {
 		buildCommit = "N/A"
 	}
+
+	cfg := agentconfig.Load()
+	//log.Printf("Start agent with the following params:\nserverUrl: %s, pollInterval: %d, reportInterval: %d", cfg.ServerURL, cfg.PollInterval, cfg.ReportInterval)
+	logger.Info("Start agent with the following params",
+		zap.String("serverUrl", cfg.ServerURL),
+		zap.Duration("pollInterval", time.Duration(cfg.PollInterval)),
+		zap.Duration("reportInterval", time.Duration(cfg.ReportInterval)),
+		zap.String("Build version", buildVersion),
+		zap.String("Build date", buildDate),
+		zap.String("Build commit", buildCommit),
+	)
 
 	client := &http.Client{}
 	sender := agent.NewJSONSender(client, cfg.ServerURL, cfg.Compress, cfg.Key, cfg.CryptoKey)
@@ -71,7 +71,7 @@ func main() {
 		defer func() {
 			close(metricsQueue)
 			wg.Done()
-		}() 
+		}()
 		lm.StartBatching(ctx, time.Duration(cfg.ReportInterval), cfg.BatchSize, metricsQueue, failedMetrics)
 	}()
 

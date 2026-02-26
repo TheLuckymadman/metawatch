@@ -80,15 +80,13 @@ func RunStandadCheks() {
 	)
 }
 
+var rmyRegExp = regexp.MustCompile("^(SA|ST)")
+
 // Run SA, ST checks from staticcheck.io
 func RunStaticCheks() {
 	var analyzers []*analysis.Analyzer
 
 	for _, v := range staticcheck.Analyzers {
-		rmyRegExp, err := regexp.Compile("^(SA|ST)")
-		if err != nil {
-			panic(err)
-		}
 		res := rmyRegExp.MatchString(v.Analyzer.Name)
 		if res {
 			analyzers = append(analyzers, v.Analyzer)

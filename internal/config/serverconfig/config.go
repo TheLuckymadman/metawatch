@@ -81,7 +81,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Secret key for hash generation")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit server url")
-	flag.StringVar(&cfg.CryptoKey, "s", cfg.CryptoKey, "private key path")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "private key path")
 	flag.StringVar(&cfg.Config, "config", cfg.Config, "json config file path")
 	flag.StringVar(&cfg.Config, "c", cfg.Config, "alias for -config")
 	flag.Parse()
