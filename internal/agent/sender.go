@@ -81,15 +81,15 @@ func (s *simpleSender) SendMetric(metric model.Metrics) error {
 	return nil
 }
 
-func (j *jsonSender) SendMetric(ctx context.Context, metric model.Metrics) error {
-	return j.sendData(ctx, []model.Metrics{metric})
+func (j *jsonSender) SendMetric(ctx context.Context, metric model.Metrics, localIP string) error {
+	return j.sendData(ctx, []model.Metrics{metric}, localIP)
 }
 
-func (j *jsonSender) SendMetrics(ctx context.Context, metrics []model.Metrics) error {
-	return j.sendData(ctx, metrics)
+func (j *jsonSender) SendMetrics(ctx context.Context, metrics []model.Metrics, localIP string) error {
+	return j.sendData(ctx, metrics, localIP)
 }
 
-func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) error {
+func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics, localIP string) error {
 	var url = fmt.Sprintf("%s/update/", j.address)
 	var aesSecret string
 	metricsJSON, err := json.Marshal(&metrics)
@@ -124,7 +124,7 @@ func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) erro
 			return fmt.Errorf("generate AES key error: %w", err)
 		}
 		encryptedAESKey, err := rsa.EncryptPKCS1v15(rand.Reader, certificate.PublicKey.(*rsa.PublicKey), aesKey)
-		if err != nil {	
+		if err != nil {
 			return fmt.Errorf("RSA encrypt AES key error: %w", err)
 		}
 		encryptedBody, err := crypto.Encrypt(body.Bytes(), aesKey)
@@ -153,6 +153,10 @@ func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) erro
 		request.Header.Set("HashSHA256", generateHMAC(j.key, metricsJSON))
 
 	}
+	if localIP != "" {
+		request.Header.Set("X-Real-IP", localIP)
+	}
+
 	response, err := j.client.Do(request)
 	if err != nil {
 		log.Printf("sending the metrics batch failed with: %v", err)

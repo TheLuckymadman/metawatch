@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,11 +18,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
 	"github.com/TheLuckymadman/metawatch/internal/config/serverconfig"
 	"github.com/TheLuckymadman/metawatch/internal/crypto"
+	gr "github.com/TheLuckymadman/metawatch/internal/grpc"
 	"github.com/TheLuckymadman/metawatch/internal/handler"
+	"github.com/TheLuckymadman/metawatch/internal/handler/middleware"
 	"github.com/TheLuckymadman/metawatch/internal/model"
+	pb "github.com/TheLuckymadman/metawatch/internal/proto"
 	"github.com/TheLuckymadman/metawatch/internal/repository"
 	"github.com/TheLuckymadman/metawatch/internal/service"
 )
@@ -108,14 +113,22 @@ func run(stopCtx context.Context) error {
 		}
 	}
 
+	var subnet *net.IPNet
+	if cfg.TrustedSubnet != "" {
+		_, subnet, err = net.ParseCIDR(cfg.TrustedSubnet)
+		if err != nil {
+			return fmt.Errorf("trusted subnet error: %w", err)
+		}
+	}
+
 	r := chi.NewRouter()
-	r.Post("/update/{type}/*", handler.MiddlewareConveyor(handler.MetricSetterHandler(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
-	r.Post("/update/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.DecryptWrapper(privKey), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Post("/updates/", handler.MiddlewareConveyor(handler.JSONSetterHandler(srv), handler.LoggerWrapper(sugar), handler.DecryptWrapper(privKey), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Get("/value/*", handler.MiddlewareConveyor(handler.MetricGetterHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Post("/value/", handler.MiddlewareConveyor(handler.JSONGetterHandler(srv), handler.LoggerWrapper(sugar), handler.DecryptWrapper(privKey), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Get("/", handler.MiddlewareConveyor(handler.MetricsListHandler(srv), handler.LoggerWrapper(sugar), handler.CompressWrapper, handler.HashWrapper(cfg.Key)))
-	r.Get("/ping", handler.MiddlewareConveyor(handler.PingDB(srv), handler.LoggerWrapper(sugar), handler.HashWrapper(cfg.Key)))
+	r.Post("/update/{type}/*", middleware.MiddlewareConveyor(handler.MetricSetterHandler(srv), middleware.LoggerWrapper(sugar), middleware.SubnetChecker(subnet), middleware.HashWrapper(cfg.Key)))
+	r.Post("/update/", middleware.MiddlewareConveyor(handler.JSONSetterHandler(srv), middleware.LoggerWrapper(sugar), middleware.SubnetChecker(subnet), middleware.DecryptWrapper(privKey), middleware.CompressWrapper, middleware.HashWrapper(cfg.Key)))
+	r.Post("/updates/", middleware.MiddlewareConveyor(handler.JSONSetterHandler(srv), middleware.LoggerWrapper(sugar), middleware.SubnetChecker(subnet), middleware.DecryptWrapper(privKey), middleware.CompressWrapper, middleware.HashWrapper(cfg.Key)))
+	r.Get("/value/*", middleware.MiddlewareConveyor(handler.MetricGetterHandler(srv), middleware.LoggerWrapper(sugar), middleware.CompressWrapper, middleware.HashWrapper(cfg.Key)))
+	r.Post("/value/", middleware.MiddlewareConveyor(handler.JSONGetterHandler(srv), middleware.LoggerWrapper(sugar), middleware.DecryptWrapper(privKey), middleware.CompressWrapper, middleware.HashWrapper(cfg.Key)))
+	r.Get("/", middleware.MiddlewareConveyor(handler.MetricsListHandler(srv), middleware.LoggerWrapper(sugar), middleware.CompressWrapper, middleware.HashWrapper(cfg.Key)))
+	r.Get("/ping", middleware.MiddlewareConveyor(handler.PingDB(srv), middleware.LoggerWrapper(sugar), middleware.HashWrapper(cfg.Key)))
 
 	server := &http.Server{
 		Addr:              cfg.ServerURL,
@@ -126,8 +139,15 @@ func run(stopCtx context.Context) error {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	sugar.Infow(
-		"starting server",
+	errCh := make(chan error, 1)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	zapLogFields := []interface{}{
 		"addr",
 		cfg.ServerURL,
 		"mode",
@@ -140,15 +160,34 @@ func run(stopCtx context.Context) error {
 		cfg.FileStoragePath,
 		"Restore",
 		cfg.Restore,
-	)
+		"TrustedSubnet",
+		cfg.TrustedSubnet,
+	}
 
-	errCh := make(chan error, 1)
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+	var grpcSrv *grpc.Server
+	if cfg.GRPCSrvAddr != "" {
+		listen, err := net.Listen("tcp", cfg.GRPCSrvAddr)
+		if err != nil {
+			return fmt.Errorf("error during GRPC server init: %w", err)
 		}
-	}()
+		if subnet != nil {
+			grpcSrv = grpc.NewServer(grpc.UnaryInterceptor(gr.SubnetChecker(subnet)))
+		} else {
+			grpcSrv = grpc.NewServer()
+		}
+		metricserver := gr.NewMetricServer(srv)
+		pb.RegisterMetricsServer(grpcSrv, metricserver)
+
+		go func() {
+			if err := grpcSrv.Serve(listen); err != nil {
+				errCh <- err
+			}
+		}()
+
+		zapLogFields = append(zapLogFields, "GRPC is enabled", cfg.GRPCSrvAddr)
+	}
+
+	sugar.Infow("starting server", zapLogFields...)
 
 	select {
 	case <-stopCtx.Done():
@@ -159,6 +198,9 @@ func run(stopCtx context.Context) error {
 			if err := server.Shutdown(shutdownCtx); err != nil {
 				_ = server.Close()
 				return fmt.Errorf("server shutdown: %w", err)
+			}
+			if cfg.GRPCSrvAddr != "" {
+				grpcSrv.GracefulStop()
 			}
 			sugar.Infow("server stopped cleanly")
 			return nil

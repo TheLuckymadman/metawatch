@@ -146,12 +146,12 @@ func TestSendJSONMetric(t *testing.T) {
 	for _, m := range metrics {
 		m := m
 		t.Run(m.ID, func(t *testing.T) {
-			err := sender.SendMetric(context.Background(), m)
+			err := sender.SendMetric(context.Background(), m, "127.0.0.1")
 			assert.NoError(t, err)
 		})
 	}
 
 	t.Log("test SendMtrics")
-	err := sender.SendMetrics(context.Background(), metrics)
+	err := sender.SendMetrics(context.Background(), metrics, "127.0.0.1")
 	assert.NoError(t, err)
 }

@@ -27,6 +27,8 @@ type Config struct {
 	AuditURL        string                `env:"AUDIT_URL"`
 	CryptoKey       string                `env:"CRYPTO_KEY" json:"CRYPTO_KEY"`
 	Config          string                `env:"CONFIG"`
+	TrustedSubnet   string                `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
+	GRPCSrvAddr     string                `env:"GRPC_SRV_ADDR" json:"GRPC_SRV_ADDR"`
 }
 
 func GetDefaultConfig() *Config {
@@ -40,6 +42,8 @@ func GetDefaultConfig() *Config {
 		AuditURL:        "",
 		CryptoKey:       "",
 		Config:          "",
+		TrustedSubnet:   "",
+		GRPCSrvAddr:     ":3200",
 	}
 }
 
@@ -72,7 +76,7 @@ func Load() *Config {
 	}
 
 	var dbInitMode string
-	flag.StringVar(&cfg.ServerURL, "a", cfg.ServerURL, "Local listening interface in the format servername:port")
+	flag.StringVar(&cfg.ServerURL, "a", cfg.ServerURL, "Local listening interface in the format: name|address:port")
 	flag.Var(&cfg.StoreInterval, "i", "The save to a file interval. If the value equals 0, it will enable a sync mode")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "The path to the file for saving metrics")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "Do we need to restore metrics from the file during the start?")
@@ -81,9 +85,11 @@ func Load() *Config {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "Secret key for hash generation")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit server url")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "private key path")
-	flag.StringVar(&cfg.Config, "config", cfg.Config, "json config file path")
-	flag.StringVar(&cfg.Config, "c", cfg.Config, "alias for -config")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "Private key path")
+	flag.StringVar(&cfg.Config, "config", cfg.Config, "JSON config file path")
+	flag.StringVar(&cfg.Config, "c", cfg.Config, "Alias for -config")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet in CIDR format")
+	flag.StringVar(&cfg.GRPCSrvAddr, "grpc-addr", cfg.GRPCSrvAddr, "GRPC server address in the format: name|address:port")
 	flag.Parse()
 
 	switch dbInitMode {

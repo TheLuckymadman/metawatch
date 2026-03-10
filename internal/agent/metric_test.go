@@ -14,7 +14,7 @@ type MockSender struct {
 	mock.Mock
 }
 
-func (m *MockSender) SendMetrics(ctx context.Context, metric []model.Metrics) error {
+func (m *MockSender) SendMetrics(ctx context.Context, metric []model.Metrics, localIP string) error {
 	args := m.Called(ctx, metric)
 	return args.Error(0)
 }
@@ -41,7 +41,7 @@ func TestGetMetrics(t *testing.T) {
 	})
 
 	t.Run("SendMetrics removes sent metrics", func(t *testing.T) {
-		localMetrics.SendMetrics(context.Background(), len(localMetrics.M))
+		localMetrics.SendMetrics(context.Background(), len(localMetrics.M), "127.0.0.1")
 		if len(localMetrics.M) != 0 {
 			t.Errorf("metrics in the start after SendMetrics was called, want: 0, got: %d", len(localMetrics.M))
 		}
@@ -54,7 +54,7 @@ func TestGetMetrics(t *testing.T) {
 		}
 		metricsCount := len(localMetrics.M)
 		half := len(localMetrics.M) / 2
-		localMetrics.SendMetrics(context.Background(), half)
+		localMetrics.SendMetrics(context.Background(), half, "127.0.0.1")
 		t.Logf("send metrics %d from %d in the store", half, metricsCount)
 		metricsLeftCount := metricsCount - half
 		if len(localMetrics.M) != metricsLeftCount {

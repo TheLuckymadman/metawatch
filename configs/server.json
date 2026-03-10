@@ -4,5 +4,6 @@
     "store_interval": "1s", 
     "store_file": "metrics.db",
     "database_dsn": "", 
-    "crypto_key": "internal/crypto/certs/private.pem"
+    "crypto_key": "internal/crypto/certs/private.pem",
+    "trusted_subnet": "192.168.1.0/24"
 }

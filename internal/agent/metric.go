@@ -28,7 +28,7 @@ func NewLocalMetrics(sender Sender) *localMetrics {
 }
 
 type Sender interface {
-	SendMetrics(ctx context.Context, metric []model.Metrics) error
+	SendMetrics(ctx context.Context, metric []model.Metrics, localIP string) error
 }
 
 func (lm *localMetrics) GetMetrics() {
@@ -68,7 +68,7 @@ func (lm *localMetrics) GetMetrics() {
 	lm.Unlock()
 }
 
-func (lm *localMetrics) SendMetrics(ctx context.Context, batchSz int) {
+func (lm *localMetrics) SendMetrics(ctx context.Context, batchSz int, localIP string) {
 	lm.Lock()
 	if len(lm.M) == 0 {
 		lm.Unlock()
@@ -83,7 +83,7 @@ func (lm *localMetrics) SendMetrics(ctx context.Context, batchSz int) {
 
 	type result struct{}
 	f := func() (result, error) {
-		err := lm.Sender.SendMetrics(ctx, copyMetrics)
+		err := lm.Sender.SendMetrics(ctx, copyMetrics, localIP)
 		return result{}, err
 	}
 	_, err := utils.WithRetry(ctx, f)
@@ -168,36 +168,6 @@ func (lm *localMetrics) StartBatching(
 	}
 }
 
-func (lm *localMetrics) MetricsSender(
-	id int,
-	ctx context.Context,
-	metricsQueue <-chan []model.Metrics,
-	failedMetrics chan<- []model.Metrics,
-) {
-	log.Printf("worker %d starts", id)
-
-	for metrics := range metricsQueue {
-		log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
-		batchCtx, stop := context.WithTimeout(context.Background(), time.Second*10)
-
-		type result struct{}
-		f := func() (result, error) {
-			err := lm.Sender.SendMetrics(batchCtx, metrics)
-			return result{}, err
-		}
-		_, err := utils.WithRetry(batchCtx, f)
-		stop()
-		if err != nil {
-			select {
-			case failedMetrics <- metrics:
-				log.Printf("MetricsSender: failed to send metrics: %v", err)
-			default:
-				log.Printf("MetricsSender: failedMetrics chan is full")
-			}
-		}
-	}
-}
-
 func (lm *localMetrics) GetExtraMetrics(ctx context.Context, pollInterval time.Duration) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -224,6 +194,37 @@ func (lm *localMetrics) GetExtraMetrics(ctx context.Context, pollInterval time.D
 			lm.M = append(lm.M, model.Metrics{ID: "FreeMemory", MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(float64(v.Free))})
 			lm.M = append(lm.M, model.Metrics{ID: fmt.Sprintf("CPUutilization%d", cpuCnt), MType: model.Gauge, Delta: nil, Value: utils.FloatPtr(cpuUtil[0])})
 			lm.Unlock()
+		}
+	}
+}
+
+func (lm *localMetrics) MetricsSender(
+	id int,
+	ctx context.Context,
+	metricsQueue <-chan []model.Metrics,
+	failedMetrics chan<- []model.Metrics,
+	localIP string,
+) {
+	log.Printf("worker %d starts", id)
+
+	for metrics := range metricsQueue {
+		log.Printf("worker %d starts sending a batch with %d metrics", id, len(metrics))
+		batchCtx, stop := context.WithTimeout(context.Background(), time.Second*10)
+
+		type result struct{}
+		f := func() (result, error) {
+			err := lm.Sender.SendMetrics(batchCtx, metrics, localIP)
+			return result{}, err
+		}
+		_, err := utils.WithRetry(batchCtx, f)
+		stop()
+		if err != nil {
+			select {
+			case failedMetrics <- metrics:
+				log.Printf("MetricsSender: failed to send metrics: %v", err)
+			default:
+				log.Printf("MetricsSender: failedMetrics chan is full")
+			}
 		}
 	}
 }
