@@ -101,7 +101,7 @@ func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) erro
 			return fmt.Errorf("gzip write failed: %w", err)
 		}
 
-		if err := gzipBody.Close(); err != nil {
+		if err = gzipBody.Close(); err != nil {
 			return fmt.Errorf("gzip close failed: %w", err)
 		}
 	} else {

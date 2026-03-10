@@ -1,16 +1,18 @@
 package service
 
 import (
+	"fmt"
+
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
-func NewAudit(auditType model.AuditType, msg model.AuditMsg, filePath string, url string) Audit {
+func NewAudit(auditType model.AuditType, msg model.AuditMsg, filePath string, url string) (Audit, error) {
 	switch auditType {
 	case model.AuditToFile:
-		return GetAuditToFile(filePath, msg)
+		return GetAuditToFile(filePath, msg), nil
 	case model.AuditToServer:
-		return GetAuditToServer(url, msg)
+		return GetAuditToServer(url, msg), nil
 	default:
-		panic("unknown audit type")
+		return nil, fmt.Errorf("unknown audit type")
 	}
 }

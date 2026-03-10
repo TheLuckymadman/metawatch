@@ -121,13 +121,13 @@ func JSONSetterHandler(s Service) http.HandlerFunc {
 		var metrics []model.Metrics
 		switch string(trimmed[0]) {
 		case `[`:
-			err := json.Unmarshal(trimmed, &metrics)
+			err = json.Unmarshal(trimmed, &metrics)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 		case `{`:
-			err := json.Unmarshal(trimmed, &metric)
+			err = json.Unmarshal(trimmed, &metric)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return

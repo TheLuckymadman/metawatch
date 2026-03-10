@@ -19,6 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var buildVersion string
+var buildDate string
+var buildCommit string
+
 func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -29,7 +33,20 @@ func main() {
 		zap.String("serverUrl", cfg.ServerURL),
 		zap.Int("pollInterval", cfg.PollInterval),
 		zap.Int("reportInterval", cfg.ReportInterval),
+		zap.String("Build version", buildVersion),
+		zap.String("Build version", buildDate),
+		zap.String("Build version", buildCommit),
 	)
+
+	if buildVersion == "" {
+		buildVersion = "N/A"
+	}
+	if buildDate == "" {
+		buildDate = "N/A"
+	}
+	if buildCommit == "" {
+		buildCommit = "N/A"
+	}
 
 	client := &http.Client{}
 	sender := agent.NewJSONSender(client, cfg.ServerURL, cfg.Compress, cfg.Key)

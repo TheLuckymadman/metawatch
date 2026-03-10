@@ -174,10 +174,10 @@ func HashWrapper(key string) Middleware {
 	return func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if key != "" {
-				hashStr := r.Header.Get("HashSHA256") 
+				hashStr := r.Header.Get("HashSHA256")
 				if hashStr != "" {
 					log.Printf("hash check")
-				
+
 					hashData, err := hex.DecodeString(hashStr)
 					if err != nil {
 						log.Printf("cannot decode hash to string %v", r.RemoteAddr)
