@@ -39,7 +39,8 @@ func (m *DBInitMode) UnmarshalText(text []byte) error {
 }
 
 type PGStorage struct {
-	DB *sql.DB
+	DB       *sql.DB
+	stopChan chan bool
 }
 
 type MigrationCMD int
@@ -54,7 +55,7 @@ func NewPGDB(dsn string, mode DBInitMode) (*PGStorage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DB: %w", err)
 	}
-	storage := PGStorage{db}
+	storage := PGStorage{db, make(chan bool)}
 	switch mode {
 	case ManagedExternally:
 		log.Println("External managed DB is chosen")

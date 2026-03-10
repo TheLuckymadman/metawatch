@@ -5,7 +5,10 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +16,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/TheLuckymadman/metawatch/internal/crypto"
 	"github.com/TheLuckymadman/metawatch/internal/model"
 )
 
@@ -26,14 +30,15 @@ func NewSimpleSender(client *http.Client, address string) *simpleSender {
 }
 
 type jsonSender struct {
-	client   *http.Client
-	address  string
-	compress bool
-	key      string
+	client    *http.Client
+	address   string
+	compress  bool
+	key       string
+	cryptoKey string
 }
 
-func NewJSONSender(client *http.Client, address string, compress bool, key string) *jsonSender {
-	return &jsonSender{client, address, compress, key}
+func NewJSONSender(client *http.Client, address string, compress bool, key string, cryptoKey string) *jsonSender {
+	return &jsonSender{client, address, compress, key, cryptoKey}
 }
 
 func (s *simpleSender) SendMetric(metric model.Metrics) error {
@@ -86,14 +91,15 @@ func (j *jsonSender) SendMetrics(ctx context.Context, metrics []model.Metrics) e
 
 func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) error {
 	var url = fmt.Sprintf("%s/update/", j.address)
+	var aesSecret string
 	metricsJSON, err := json.Marshal(&metrics)
 	if err != nil {
 		log.Printf("marshalling metrics data failed with error: %v", err)
 		return fmt.Errorf("marshalling metrics data failed with error: %w", err)
 	}
+
 	var body bytes.Buffer
 	if j.compress {
-
 		gzipBody := gzip.NewWriter(&body)
 		_, err = gzipBody.Write(metricsJSON)
 
@@ -108,10 +114,36 @@ func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) erro
 		body.Write(metricsJSON)
 	}
 
+	if j.cryptoKey != "" {
+		certificate, err := crypto.ReadCert(j.cryptoKey)
+		if err != nil {
+			return fmt.Errorf("certificate reading failure: %w", err)
+		}
+		aesKey, err := crypto.GenerateAESKey()
+		if err != nil {
+			return fmt.Errorf("generate AES key error: %w", err)
+		}
+		encryptedAESKey, err := rsa.EncryptPKCS1v15(rand.Reader, certificate.PublicKey.(*rsa.PublicKey), aesKey)
+		if err != nil {	
+			return fmt.Errorf("RSA encrypt AES key error: %w", err)
+		}
+		encryptedBody, err := crypto.Encrypt(body.Bytes(), aesKey)
+		if err != nil {
+			return fmt.Errorf("create new AES cipher error: %w", err)
+		}
+		body.Reset()
+		body.Write(encryptedBody)
+		aesSecret = base64.StdEncoding.EncodeToString(encryptedAESKey)
+	}
+
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &body)
 	if err != nil {
 		log.Printf("creating request failed: %v", err)
 		return fmt.Errorf("creating request failed: %w", err)
+	}
+
+	if aesSecret != "" {
+		request.Header.Set("AES-Secret", aesSecret)
 	}
 	if j.compress {
 		request.Header.Set("Content-Encoding", "gzip")
@@ -127,7 +159,8 @@ func (j *jsonSender) sendData(ctx context.Context, metrics []model.Metrics) erro
 		return fmt.Errorf("sending the metrics batch failed with: %w", err)
 	}
 	defer response.Body.Close()
-	log.Printf("sending metrics batch on %v with status: %v", url, response.Status)
+	resBody, _ := io.ReadAll(response.Body)
+	log.Printf("sending metrics batch on %v with status: %v, body: %v", url, response.Status, string(resBody))
 
 	return nil
 }
