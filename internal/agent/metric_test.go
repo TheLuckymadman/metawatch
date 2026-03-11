@@ -19,6 +19,10 @@ func (m *MockSender) SendMetrics(ctx context.Context, metric []model.Metrics, lo
 	return args.Error(0)
 }
 
+func (m *MockSender) Close() error {
+	return nil
+}
+
 func TestGetMetrics(t *testing.T) {
 	mockSender := new(MockSender)
 	mockSender.On("SendMetrics", mock.Anything, mock.Anything).Return(nil)

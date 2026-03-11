@@ -27,7 +27,7 @@ type Config struct {
 	AuditURL        string                `env:"AUDIT_URL"`
 	CryptoKey       string                `env:"CRYPTO_KEY" json:"CRYPTO_KEY"`
 	Config          string                `env:"CONFIG"`
-	TrustedSubnet   string                `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
+	TrustedSubnet   string                `env:"TRUSTED_SUBNET" json:"TRUSTED_SUBNET"`
 	GRPCSrvAddr     string                `env:"GRPC_SRV_ADDR" json:"GRPC_SRV_ADDR"`
 }
 
@@ -43,7 +43,7 @@ func GetDefaultConfig() *Config {
 		CryptoKey:       "",
 		Config:          "",
 		TrustedSubnet:   "",
-		GRPCSrvAddr:     ":3200",
+		GRPCSrvAddr:     "",
 	}
 }
 

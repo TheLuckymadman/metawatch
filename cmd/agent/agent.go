@@ -52,10 +52,12 @@ func main() {
 	var serverAddr = cfg.ServerURL
 	if cfg.GRPCAddress != "" {
 		var err error
-		sender, err = agent.NewGRCPSender(cfg.GRPCAddress)
+		sender, err = agent.NewGRPCSender(cfg.GRPCAddress)
 		if err != nil {
 			log.Fatalf("new grpc error: %v", err)
 		}
+		defer sender.Close()
+
 		sendMode = "GRPC"
 		serverAddr = cfg.GRPCAddress
 	} else {

@@ -27,10 +27,6 @@ func NewLocalMetrics(sender Sender) *localMetrics {
 	return &localMetrics{M: make([]model.Metrics, 0, 28), PollCount: utils.Int64Ptr(0), Sender: sender}
 }
 
-type Sender interface {
-	SendMetrics(ctx context.Context, metric []model.Metrics, localIP string) error
-}
-
 func (lm *localMetrics) GetMetrics() {
 	var memstat runtime.MemStats
 	runtime.ReadMemStats(&memstat)

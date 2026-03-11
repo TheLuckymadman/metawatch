@@ -20,11 +20,11 @@ func GetLocalIP() string {
 	if err != nil {
 		log.Printf("cannot get interface info: %v\nn", err)
 	}
+	defaultIface, err := GetDefaultIface()
+	if err != nil {
+		log.Printf("cannot get default gw info: %v\n", err)
+	}
 	for _, iface := range interfaces {
-		defaultIface, err := GetDefaultIface()
-		if err != nil {
-			log.Printf("cannot get default gw info: %v\n", err)
-		}
 		if iface.Name == defaultIface {
 			addrs, err := iface.Addrs()
 			if err != nil {

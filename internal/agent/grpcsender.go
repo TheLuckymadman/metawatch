@@ -15,18 +15,18 @@ import (
 
 type grpcSender struct {
 	client pb.MetricsClient
+	conn   *grpc.ClientConn
 }
 
-func NewGRCPSender(address string) (*grpcSender, error) {
+func NewGRPCSender(address string) (*grpcSender, error) {
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("new grpc sender error: %w", err)
 	}
-	//defer conn.Close()
 
 	c := pb.NewMetricsClient(conn)
 
-	return &grpcSender{client: c}, nil
+	return &grpcSender{client: c, conn: conn}, nil
 }
 
 func (s *grpcSender) SendMetrics(ctx context.Context, metric []model.Metrics, localIP string) error {
@@ -64,5 +64,13 @@ func (s *grpcSender) SendMetrics(ctx context.Context, metric []model.Metrics, lo
 	}
 	log.Printf("grpcSender, sent %d metrics successfully\n", len(metrics))
 
+	return nil
+}
+
+func (s *grpcSender) Close() error {
+	err := s.conn.Close()
+	if err != nil {
+		return fmt.Errorf("error on grpc connection close: %w", err)
+	}
 	return nil
 }

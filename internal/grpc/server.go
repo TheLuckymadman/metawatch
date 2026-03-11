@@ -54,7 +54,6 @@ func (ms *MetricServer) UpdateMetrics(ctx context.Context, in *pb.UpdateMetricsR
 		default:
 			return nil, status.Errorf(codes.FailedPrecondition, "grpc MetricServer, unknown metric type %v", m.GetType())
 		}
-		fmt.Println(metrics[i])
 	}
 	if err = ms.s.AddObjMetrics(ctx, metrics, agentIP); err != nil {
 		log.Printf("grpc MetricServer, add metrics failed: %v", err)
