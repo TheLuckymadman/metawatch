@@ -80,7 +80,7 @@ func (s *Service) AddObjMetric(ctx context.Context, metric model.Metrics, agentI
 			}
 		}
 	default:
-		return fmt.Errorf("invalid metric type")
+		return fmt.Errorf("invalid metric type %s", metric.MType)
 	}
 
 	err := s.storage.AddMetrics(ctx, agentIP, metrics)
@@ -110,7 +110,7 @@ func (s *Service) AddObjMetrics(ctx context.Context, metrics []model.Metrics, ag
 				}
 			}
 		default:
-			return fmt.Errorf("wrong metric  type")
+			return fmt.Errorf("wrong metric type %s", metric.MType)
 		}
 	}
 	err := s.storage.AddMetrics(ctx, agentIP, metrics)

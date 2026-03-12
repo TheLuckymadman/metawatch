@@ -24,6 +24,8 @@ type Config struct {
 	LogMetrics     bool           `env:"LOG_METRICS"`
 	CryptoKey      string         `env:"CRYPTO_KEY" json:"CRYPTO_KEY"`
 	Config         string         `env:"CONFIG"`
+	IPHeader       bool           `env:"IP_HEADER" json:"ip_header"`
+	GRPCAddress    string         `env:"GRPC_ADDRESS" json:"grpc_address"`
 }
 
 func GetDefaultConfig() *Config {
@@ -38,6 +40,8 @@ func GetDefaultConfig() *Config {
 		LogMetrics:     false,
 		CryptoKey:      "",
 		Config:         "",
+		IPHeader:       true,
+		GRPCAddress:    "",
 	}
 }
 
@@ -76,6 +80,8 @@ func Load() *Config {
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "certificate path")
 	flag.StringVar(&cfg.Config, "config", cfg.Config, "json config file path")
 	flag.StringVar(&cfg.Config, "c", cfg.Config, "alias for -config")
+	flag.BoolVar(&cfg.IPHeader, "ip-header", cfg.IPHeader, "add X-Real-IP in requests")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-address", cfg.GRPCAddress, "grpc server address")
 	flag.Parse()
 
 	err := env.Parse(cfg)
